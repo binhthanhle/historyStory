@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historical Story Finder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script type="module">
+        // IMPORTANT: ESM (ECMAScript Module) for Gemini SDK
+        import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
+
+        // --- Firebase Configuration (Following platform guidelines) ---
+        const appId = (typeof window.__app_id !== 'undefined') ? window.__app_id : 'default-app-id-story';
+        const firebaseConfig = JSON.parse(
+            (typeof window.__firebase_config !== 'undefined') ? window.__firebase_config : JSON.stringify({
+                apiKey: "AIzaSyBnDQYvktbz1nsihJf2IZmObm47-3xjIPQ", // Replace with your actual Firebase API key
+                authDomain: "test-firebase-4d1ff.firebaseapp.com", // Replace with your actual Firebase auth domain
+                projectId: "test-firebase-4d1ff", // Replace with your actual Firebase project ID
+                storageBucket: "test-firebase-4d1ff.firebasestorage.app", // Replace with your actual Firebase storage bucket
+                messagingSenderId: "645698663286", // Replace with your actual Firebase messaging sender ID
+                appId: "1:645698663286:web:3fa0f8ad2c70aa12e14057" // Replace with your actual Firebase app ID
+            })
+        );
+
+        // --- Gemini API Key ---
+        const GEMINI_API_KEY = "AIzaSyBpNS9buNt6TJOsWgr_zK0LtPW_Jx344-E"; // KEEP EMPTY TO USE PROVIDED KEY or gemini-2.0-flash
+
+        // --- Google Cloud Text-to-Speech API Key ---
+        // !!! IMPORTANT SECURITY WARNING !!!
+        // Embedding API keys directly in client-side code is highly insecure.
+        // This key will be visible to anyone inspecting your website's code.
+        // For production, use a backend proxy to make this API call securely.
+        const TTS_API_KEY = "AIzaSyBdkCTv_v-_1w47ij3eOAwXoCdhpMpA3FY"; // User-provided API key
+
+        // Initialize Gemini
+        const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+        // DOM Elements
+        const postcodeForm = document.getElementById('postcodeForm');
+        const postcodeValue = document.getElementById('postcode');
+        const storyOutput = document.getElementById('storyOutput');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const audioButtonContainer = document.getElementById('audioButtonContainer');
+        const playAudioButton = document.getElementById('playAudioButton');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const ttsStatus = document.getElementById('ttsStatus');
+        const errorMessage = document.getElementById('errorMessage');
+
+        let currentMarkdownStory = ""; // To store the story for TTS
+
+        // Event Listener for the form
+        postcodeForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const postcode = postcodeValue.value.trim();
+
+            if (!postcode) {
+                displayError("Please enter a postcode.");
+                return;
+            }
+
+            // Clear previous results and errors
+            storyOutput.innerHTML = '';
+            audioButtonContainer.classList.add('hidden');
+            audioPlayer.src = ''; // Clear previous audio
+            ttsStatus.textContent = '';
+            ttsStatus.classList.add('hidden');
+            errorMessage.classList.add('hidden');
+            errorMessage.textContent = '';
+            loadingIndicator.classList.remove('hidden');
+            playAudioButton.disabled = false; // Re-enable button
+
+            try {
+                const prompt = `
+                    You are a historian and storyteller.
+                    A user has provided the UK postcode: "${postcode}".
+                    Your task is to generate an interesting and engaging historical story or overview related to the area indicated by this postcode.
+                    Consider any notable events, figures, architectural developments, or cultural shifts associated with that general area.
+                    If the postcode is very specific, broaden the scope slightly to ensure a good story can be found.
+                    The story should be well-structured and presented in Markdown format.
+                    Include a title for the story.
+                    If you cannot find specific historical information for the exact postcode, try to find information for the broader town/city or region it belongs to and state that you are doing so.
+                    If no relevant historical information can be reasonably found or inferred for the general area, respond with a polite message indicating that, still in Markdown.
+                `;
+
+                const result = await model.generateContent(prompt);
+                const response = await result.response;
+                currentMarkdownStory = response.text(); // Store for TTS
+
+                console.log("Gemini Story (Markdown):", currentMarkdownStory);
+                storyOutput.innerHTML = convertMarkdownToHtml(currentMarkdownStory);
+                audioButtonContainer.classList.remove('hidden');
+
+            } catch (error) {
+                console.error("Error fetching or generating story:", error);
+                displayError("Sorry, an error occurred while fetching the historical story. Please try again. Details: " + error.message);
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        });
+
+        // Event Listener for Play Audio Button
+        playAudioButton.addEventListener('click', async () => {
+            if (!currentMarkdownStory) {
+                ttsStatus.textContent = "No story available to read.";
+                ttsStatus.classList.remove('hidden');
+                return;
+            }
+            if (!TTS_API_KEY) {
+                ttsStatus.textContent = "TTS API Key is missing. Cannot generate audio.";
+                ttsStatus.classList.remove('hidden');
+                console.error("TTS API Key is missing.");
+                alert("TTS API Key is missing. Please configure it in the script.");
+                return;
+            }
+
+            // Convert Markdown to plain text for TTS (simple approach)
+            const plainTextStory = convertMarkdownToPlainText(currentMarkdownStory);
+
+            playAudioButton.disabled = true;
+            ttsStatus.textContent = "Generating audio...";
+            ttsStatus.classList.remove('hidden');
+            audioPlayer.src = ''; // Clear previous audio
+
+            const ttsUrl = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${TTS_API_KEY}`;
+            const requestBody = {
+                input: {
+                    text: plainTextStory.substring(0, 5000) // TTS API has a limit (e.g., 5000 chars)
+                },
+                voice: {
+                    languageCode: 'en-GB', // Using British English
+                    name: 'en-GB-Wavenet-A', // Example high-quality Wavenet voice
+                    ssmlGender: 'FEMALE'
+                },
+                audioConfig: {
+                    audioEncoding: 'MP3'
+                }
+            };
+
+            try {
+                const ttsResponse = await fetch(ttsUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!ttsResponse.ok) {
+                    const errorData = await ttsResponse.json();
+                    console.error("TTS API Error:", errorData);
+                    throw new Error(`TTS API request failed: ${errorData.error?.message || ttsResponse.statusText}`);
+                }
+
+                const responseData = await ttsResponse.json();
+                if (responseData.audioContent) {
+                    audioPlayer.src = `data:audio/mp3;base64,${responseData.audioContent}`;
+                    audioPlayer.play();
+                    ttsStatus.textContent = "Playing audio...";
+                } else {
+                    throw new Error("No audio content received from TTS API.");
+                }
+
+            } catch (error) {
+                console.error("Error with TTS API:", error);
+                ttsStatus.textContent = `Error generating audio: ${error.message}`;
+                displayError(`Could not generate audio: ${error.message}. Check console for details. Ensure the API key is valid and the Text-to-Speech API is enabled for your project.`);
+            } finally {
+                playAudioButton.disabled = false; // Re-enable after attempt
+                // ttsStatus will be updated by audio events or remain as error
+            }
+        });
+
+        audioPlayer.onended = () => {
+            ttsStatus.textContent = "Audio finished.";
+        };
+        audioPlayer.onerror = (e) => {
+            console.error("Audio player error:", e);
+            ttsStatus.textContent = "Error playing audio.";
+            playAudioButton.disabled = false;
+        };
+         audioPlayer.onpause = () => {
+            if (audioPlayer.currentTime > 0 && !audioPlayer.ended) {
+                 ttsStatus.textContent = "Audio paused.";
+            }
+        };
+        audioPlayer.onplaying = () => {
+            ttsStatus.textContent = "Playing audio...";
+        };
+
+
+        function displayError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('hidden');
+            // storyOutput.innerHTML = ''; // Keep story visible on TTS error
+            // audioButtonContainer.classList.add('hidden'); // Keep button visible
+        }
+
+        function convertMarkdownToPlainText(markdown) {
+            // Basic conversion: remove markdown syntax for cleaner speech
+            let text = markdown;
+            // Remove headers
+            text = text.replace(/^#+\s+(.*)/gm, '$1.');
+            // Remove bold/italic markers
+            text = text.replace(/[\*_]{1,2}(.*?)[*_]{1,2}/g, '$1');
+            // Remove list markers
+            text = text.replace(/^\s*[\*\-\+]\s+/gm, '');
+            // Remove image links (alt text only)
+            text = text.replace(/!\[(.*?)\]\(.*?\)/g, '$1');
+            // Remove links (link text only)
+            text = text.replace(/\[(.*?)\]\(.*?\)/g, '$1');
+            // Replace multiple newlines with a single space (or period for sentence breaks)
+            text = text.replace(/\n\s*\n/g, '. ');
+            text = text.replace(/\n/g, ' ');
+            // Remove extra spaces
+            text = text.replace(/\s+/g, ' ').trim();
+            return text;
+        }
+
+        function convertMarkdownToHtml(markdown) {
+            let html = markdown;
+            // Titles (#, ##, ###)
+            html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+            html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+            html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+            // Bold (**text** or __text__)
+            html = html.replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>');
+            html = html.replace(/__(.*?)__/gim, '<strong>$1</strong>');
+            // Italic (*text* or _text_)
+            html = html.replace(/\*(.*?)\*/gim, '<em>$1</em>');
+            html = html.replace(/_(.*?)_/gim, '<em>$1</em>');
+            // Unordered lists (*, -, +)
+            html = html.replace(/^\s*[\*\-\+]\s+(.*)/gim, (match, item) => `<li>${item}</li>`);
+            html = html.replace(/(<li>.*<\/li>\s*)+/g, (match) => `<ul>${match}</ul>`);
+            html = html.replace(/<\/ul>\s*<ul>/gim, '');
+
+            // Paragraphs
+            html = html.split(/\n\s*\n/).map(paragraph => {
+                if (paragraph.trim().match(/^<(h[1-6]|ul|li|strong|em)/)) return paragraph;
+                return paragraph.trim() ? `<p>${paragraph.trim()}</p>` : '';
+            }).join('');
+
+            html = html.replace(/<p>([\s\S]*?)<\/p>/gim, (match, pcontent) => {
+                if (pcontent.includes('<li>')) return `<p>${pcontent}</p>`;
+                return '<p>' + pcontent.replace(/(?<!<br>)\n(?!<br>|\s*<li>|<\/li>)/gim, '<br>') + '</p>';
+            });
+            return html;
+        }
+
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        #storyOutput h1 { font-size: 1.875rem; font-weight: bold; margin-top: 1rem; margin-bottom: 0.5rem; }
+        #storyOutput h2 { font-size: 1.5rem; font-weight: bold; margin-top: 0.875rem; margin-bottom: 0.4rem; }
+        #storyOutput h3 { font-size: 1.25rem; font-weight: bold; margin-top: 0.75rem; margin-bottom: 0.3rem; }
+        #storyOutput p { margin-bottom: 1rem; line-height: 1.6; }
+        #storyOutput strong { font-weight: bold; }
+        #storyOutput em { font-style: italic; }
+        #storyOutput ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 1rem; padding-left: 1rem;}
+        #storyOutput li { margin-bottom: 0.25rem; }
+        #audioPlayer { margin-top: 0.5rem; width: 100%; border-radius: 0.375rem; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 to-slate-800 text-slate-100 min-h-screen flex flex-col items-center justify-center p-4 selection:bg-sky-500 selection:text-white">
+
+    <div class="bg-slate-800 shadow-2xl rounded-xl p-6 md:p-10 w-full max-w-2xl">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-sky-400">Historical Story Finder</h1>
+            <p class="text-slate-400 mt-2">Enter a UK postcode to discover historical stories from its vicinity.</p>
+        </header>
+
+        <form id="postcodeForm" class="space-y-6">
+            <div>
+                <label for="postcode" class="block text-sm font-medium text-sky-300 mb-1">Postcode</label>
+                <input type="text" name="postcode" id="postcode" required
+                       class="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 ease-in-out"
+                       placeholder="e.g., SW1A 1AA">
+            </div>
+            <button type="submit"
+                    class="w-full bg-sky-600 hover:bg-sky-500 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-opacity-50">
+                Discover History
+            </button>
+        </form>
+
+        <div id="loadingIndicator" class="mt-8 text-center hidden">
+            <div class="inline-flex items-center">
+                <svg class="animate-spin -ml-1 mr-3 h-6 w-6 text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="text-slate-300">Fetching historical insights...</span>
+            </div>
+        </div>
+
+        <div id="errorMessage" class="mt-6 bg-red-700/30 border border-red-600 text-red-300 px-4 py-3 rounded-lg hidden" role="alert">
+            </div>
+
+        <article id="storyOutput" class="mt-8 prose prose-invert max-w-none text-slate-200">
+            </article>
+
+        <div id="audioButtonContainer" class="mt-8 text-center hidden">
+            <button id="playAudioButton"
+                    class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                ▶️ Read Aloud
+            </button>
+            <p id="ttsStatus" class="text-sm text-slate-400 mt-2 hidden"></p>
+            <audio id="audioPlayer" controls class="mt-3 w-full rounded-md"></audio>
+            <p class="text-xs text-slate-500 mt-2">
+                <strong class="text-amber-400">Warning:</strong> API key is exposed in client-side code. For production, use a secure backend solution.
+            </p>
+        </div>
+    </div>
+
+    <footer class="text-center text-slate-500 mt-12 text-sm">
+        <p>&copy; <span id="currentYear"></span> Historical Story Finder. Powered by Gemini & Google Cloud TTS.</p>
+    </footer>
+    <script>
+        document.getElementById('currentYear').textContent = new Date().getFullYear();
+    </script>
+
+</body>
+</html>
