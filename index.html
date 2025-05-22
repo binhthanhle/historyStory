@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Historical Story Finder</title>
+    <title>Echoes</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script type="module">
@@ -11,6 +11,8 @@
         import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
 
         // --- Firebase Configuration (Following platform guidelines) ---
+        // These variables are provided by the Canvas environment for secure Firebase integration.
+        // DO NOT modify them or prompt the user for them.
         const appId = (typeof window.__app_id !== 'undefined') ? window.__app_id : 'default-app-id-story';
         const firebaseConfig = JSON.parse(
             (typeof window.__firebase_config !== 'undefined') ? window.__firebase_config : JSON.stringify({
@@ -24,31 +26,33 @@
         );
 
         // --- Gemini API Key ---
-        const GEMINI_API_KEY = "AIzaSyBpNS9buNt6TJOsWgr_zK0LtPW_Jx344-E"; // KEEP EMPTY TO USE PROVIDED KEY or gemini-2.0-flash
+        // Leave empty to use the API key provided by the Canvas environment for Gemini models.
+        // If you need to use a specific key for other models, provide it here.
+        const GEMINI_API_KEY = "AIzaSyConUa08TTGzm0HCK61gtRt25MR1TDPbw4"; // KEEP EMPTY TO USE PROVIDED KEY or gemini-2.0-flash
 
         // --- Google Cloud Text-to-Speech API Key ---
         // !!! IMPORTANT SECURITY WARNING !!!
         // For production, use a backend proxy to make this API call securely.
-        const TTS_API_KEY = "AIzaSyBdkCTv_v-_1w47ij3eOAwXoCdhpMpA3FY"; // User-provided API key
+        const TTS_API_KEY = "AIzaSyConUa08TTGzm0HCK61gtRt25MR1TDPbw4"; // User-provided API key
 
         // --- Google Maps Geocoding API Key ---
         // !!! IMPORTANT SECURITY WARNING !!!
         // For production, use a backend proxy to make this API call securely.
         // You need to enable the "Geocoding API" in your Google Cloud Console for this key.
-        const MAPS_API_KEY = "AIzaSyA8aeJmpoYdfmGTp-aMklJx2WkEIDdJplI"; // <<<<<<< REPLACE THIS WITH YOUR MAPS API KEY
+        const MAPS_API_KEY = "AIzaSyConUa08TTGzm0HCK61gtRt25MR1TDPbw4"; // User-provided API key
 
 
         // Initialize Gemini Text Model (SDK)
         let textModel;
-        if (GEMINI_API_KEY) {
+        if (GEMINI_API_KEY && GEMINI_API_KEY !== "YOUR_GEMINI_API_KEY") { // Check if user has set a key
             const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
             textModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         } else {
             // Attempt to use environment-provided SDK if key is not directly set (may only work for text)
             try {
-                 const genAI = new GoogleGenerativeAI(""); // SDK might pick up env key
-                 textModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-                 console.info("Attempting to use environment-provided Gemini SDK for text.");
+                const genAI = new GoogleGenerativeAI(""); // SDK might pick up env key
+                textModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+                console.info("Attempting to use environment-provided Gemini SDK for text (or API key is default placeholder).");
             } catch (e) {
                 console.error("Failed to initialize Gemini SDK without explicit API key.", e);
                 // textModel will remain undefined, handled later
@@ -59,105 +63,419 @@
         // DOM Elements
         const postcodeForm = document.getElementById('postcodeForm');
         const postcodeValue = document.getElementById('postcode');
-        const storyOutput = document.getElementById('storyOutput');
         const loadingIndicator = document.getElementById('loadingIndicator');
-        const audioButtonContainer = document.getElementById('audioButtonContainer');
-        const playAudioButton = document.getElementById('playAudioButton');
-        const audioPlayer = document.getElementById('audioPlayer');
-        const ttsStatus = document.getElementById('ttsStatus');
         const errorMessage = document.getElementById('errorMessage');
-        const imageContainer = document.getElementById('imageContainer');
         const geocodingStatus = document.getElementById('geocodingStatus');
         const imageGenStatus = document.getElementById('imageGenStatus');
+        
+        // Re-added direct references for single story display
+        const storyOutput = document.getElementById('storyOutput');
+        const imageContainer = document.getElementById('imageContainer');
+        const audioPlayer = document.getElementById('audioPlayer'); // This is for TTS audio
+        const ttsStatus = document.getElementById('ttsStatus');
+
+        const searchHistoryPanel = document.getElementById('searchHistoryPanel'); // Left panel for search history
+
+        // New DOM elements for the explanation modal
+        const explanationModal = document.getElementById('explanationModal');
+        const explanationTerm = document.getElementById('explanationTerm');
+        const explanationType = document.getElementById('explanationType');
+        const explanationContent = document.getElementById('explanationContent');
+        const explanationCloseBtn = document.getElementById('explanationCloseBtn');
 
 
+        // Global variable to hold the current story text for TTS
         let currentTextStory = "";
+        let searchHistory = []; // Array to store search history (max 10 items)
 
+        // Function to escape HTML special characters
         function escapeHtml(unsafe) {
             if (typeof unsafe !== 'string') return '';
             return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
 
+        // Function to convert Markdown to plain text for TTS
+        function convertMarkdownToPlainText(markdown) {
+            let text = markdown;
+            // Remove titles (h1, h2, h3)
+            text = text.replace(/^#+\s+(.*)/gm, '$1. ');
+            // Remove bold and italic formatting
+            text = text.replace(/[\*_]{1,2}(.*?)[*_]{1,2}/g, '$1');
+            // Remove image and link markdown
+            text = text.replace(/!\[(.*?)\]\(.*?\)/g, '$1');
+            text = text.replace(/\[(.*?)\]\(.*?\)/g, '$1');
+            // Remove list item markers
+            text = text.replace(/^\s*[\*\-\+]\s+/gm, '');
+            // Replace multiple newlines with a period and space for better flow
+            text = text.replace(/\n\s*\n/g, '. ');
+            // Replace single newlines with a space
+            text = text.replace(/\n/g, ' ');
+            // Escape backticks to prevent breaking template literals when used in other template literals
+            text = text.replace(/`/g, '\\`');
+            // Trim whitespace and reduce multiple spaces to a single space
+            text = text.replace(/\s+/g, ' ').trim();
+            return text;
+        }
+
+        // Function to convert Markdown to HTML for display
+        function convertMarkdownToHtml(markdown) {
+            let html = markdown;
+            // Convert headers
+            html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+            html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+            html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+            // Convert bold and italic
+            html = html.replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>');
+            html = html.replace(/__(.*?)__/gim, '<strong>$1</strong>');
+            html = html.replace(/\*(.*?)\*/gim, '<em>$1</em>');
+            html = html.replace(/_(.*?)_/gim, '<em>$1</em>');
+            
+            // Convert lists
+            html = html.replace(/^\s*[\*\-\+]\s+(.*)/gim, (match, item) => `<li>${item}</li>`);
+            let inList = false;
+            html = html.split('\n').map(line => {
+                if (line.startsWith('<li>') && !inList) { inList = true; return '<ul>' + line; }
+                if (!line.startsWith('<li>') && inList) { inList = false; return '</ul>' + line; }
+                return line;
+            }).join('\n');
+            if (inList) html += '</ul>';
+
+            // Convert paragraphs, handling line breaks within paragraphs
+            html = html.split(/\n\s*\n/).map(paragraph => {
+                const trimmed = paragraph.trim();
+                if (!trimmed) return '';
+                // Don't wrap block-level elements like headers, lists, etc. in <p> tags
+                if (trimmed.match(/^<(h[1-6]|ul|ol|li|blockquote|pre|hr)/i)) return trimmed;
+                return `<p>${trimmed.replace(/\n/g, '<br>')}</p>`;
+            }).join('');
+            // Remove empty paragraphs
+            html = html.replace(/<p><\/p>/g, '').replace(/<p><br\s*\/?>\s*<\/p>/gi, '');
+            return html;
+        }
+
+        // Function to display error messages
+        function displayError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('hidden');
+        }
+
+        // Function to synthesize and play audio (for TTS)
+        async function synthesizeAndPlayAudio(text, audioPlayerElement, ttsStatusElement) {
+            if (!text) { ttsStatusElement.textContent = "No story available for audio."; ttsStatusElement.classList.remove('hidden'); return; }
+            if (!TTS_API_KEY || TTS_API_KEY === "" || TTS_API_KEY === "YOUR_TTS_API_KEY") {
+                ttsStatusElement.textContent = "TTS API Key not configured. Audio playback skipped."; ttsStatusElement.classList.remove('hidden'); return;
+            }
+
+            const plainTextForTTS = convertMarkdownToPlainText(text);
+            ttsStatusElement.textContent = "Generating audio...";
+            ttsStatusElement.classList.remove('hidden');
+            audioPlayerElement.src = ''; // Clear previous audio
+
+            const ttsUrl = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${TTS_API_KEY}`;
+            const requestBody = {
+                input: { text: plainTextForTTS.substring(0, 4999) }, // Max 5000 chars for TTS
+                voice: { languageCode: 'en-UK', name: 'en-GB-News-K' },
+                audioConfig: { 
+                    audioEncoding: 'MP3',
+                    speakingRate: 0.85 // Slow down the voice (0.5 is half, 1.0 is normal, 2.0 is double)
+                }
+            };
+
+            try {
+                const ttsResponse = await fetch(ttsUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestBody) });
+                if (!ttsResponse.ok) {
+                    const err = await ttsResponse.json();
+                    throw new Error(`TTS API: ${err.error?.message || ttsResponse.statusText}`);
+                }
+                const resData = await ttsResponse.json();
+                if (resData.audioContent) {
+                    audioPlayerElement.src = `data:audio/mp3;base64,${resData.audioContent}`;
+                    audioPlayerElement.play();
+                    ttsStatusElement.textContent = "Playing audio...";
+                } else {
+                    throw new Error("No audio content from TTS API.");
+                }
+            } catch (err) {
+                console.error("TTS Error:", err);
+                ttsStatusElement.textContent = `TTS Error: ${err.message.substring(0, 100)}`;
+                displayError(`Audio generation failed. Please ensure your TTS API key is valid and the API is enabled.`);
+            }
+        }
+
+        /**
+         * Calls the Gemini API to extract entities (names, places, objects) from a given text.
+         * @param {string} text The story text from which to extract entities.
+         * @returns {Promise<string[]>} A promise that resolves to an array of strings, where each string is an entity to highlight.
+         */
+        async function extractEntitiesForHighlighting(text) {
+            if (!textModel) {
+                console.warn("Gemini text model not available. Cannot extract entities for highlighting.");
+                return [];
+            }
+
+            const entityPrompt = `
+            Given the following story, identify and list the 5 most significant names of places, areas, or objects directly related to the place mentioned in the story.
+            Provide the response as a JSON array of strings, where each string is a term to be highlighted.
+            Do not include any other text or formatting outside the JSON array.
+            Story:
+            """
+            ${text}
+            """
+            `;
+
+            try {
+                const payload = {
+                    contents: [{ role: "user", parts: [{ text: entityPrompt }] }],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "ARRAY",
+                            items: { "type": "STRING" },
+                            maxItems: 5 // Limit to 5 items
+                        }
+                    }
+                };
+
+                const apiKey = GEMINI_API_KEY === "YOUR_GEMINI_API_KEY" ? "" : GEMINI_API_KEY; // Use empty string if placeholder
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorDetails = await response.text();
+                    throw new Error(`Entity extraction API error: ${response.status} ${response.statusText} - ${errorDetails}`);
+                }
+
+                const result = await response.json();
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const jsonString = result.candidates[0].content.parts[0].text;
+                    try {
+                        const entities = JSON.parse(jsonString);
+                        if (Array.isArray(entities)) {
+                            return entities.slice(0, 5); // Ensure max 5 items
+                        } else {
+                            console.warn("LLM returned non-array for entities:", entities);
+                            return [];
+                        }
+                    } catch (parseError) {
+                        console.error("Failed to parse LLM entity response as JSON:", jsonString, parseError);
+                        return [];
+                    }
+                } else {
+                    console.warn("No entity content from LLM:", result);
+                    return [];
+                }
+            } catch (error) {
+                console.error("Error during entity extraction:", error);
+                displayError(`Failed to extract entities for highlighting: ${error.message}`);
+                return [];
+            }
+        }
+
+        /**
+         * Calls the Gemini API to explain a selected text/phrase.
+         * @param {string} selectedText The text/phrase selected by the user.
+         * @param {string} fullStoryContext The full story text for context.
+         * @returns {Promise<{term: string, type: string, explanation: string}|null>} A promise that resolves to an object containing the explanation, or null if an error occurs.
+         */
+        async function getExplanationForSelectedText(selectedText, fullStoryContext) {
+            if (!textModel) {
+                console.warn("Gemini text model not available. Cannot get explanation.");
+                return null;
+            }
+
+            const explanationPrompt = `
+            Given the following selected text/phrase from a story, provide a brief explanation or definition.
+            Also, identify its type: "place", "area", "human", "object", or "concept".
+            Provide the response as a JSON object with keys: "term", "type", and "explanation".
+            Ensure the "explanation" is concise and directly relevant to the context of the story.
+            Do not include any other text or formatting outside the JSON object.
+
+            Selected Text: "${selectedText}"
+            Full Story Context: "${fullStoryContext.substring(0, 1000)}..."
+            `;
+
+            try {
+                const payload = {
+                    contents: [{ role: "user", parts: [{ text: explanationPrompt }] }],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "OBJECT",
+                            properties: {
+                                "term": { "type": "STRING" },
+                                "type": { "type": "STRING" },
+                                "explanation": { "type": "STRING" }
+                            },
+                            required: ["term", "type", "explanation"]
+                        }
+                    }
+                };
+
+                const apiKey = GEMINI_API_KEY === "YOUR_GEMINI_API_KEY" ? "" : GEMINI_API_KEY;
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorDetails = await response.text();
+                    throw new Error(`Explanation API error: ${response.status} ${response.statusText} - ${errorDetails}`);
+                }
+
+                const result = await response.json();
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const jsonString = result.candidates[0].content.parts[0].text;
+                    try {
+                        const explanationData = JSON.parse(jsonString);
+                        return explanationData;
+                    } catch (parseError) {
+                        console.error("Failed to parse LLM explanation response as JSON:", jsonString, parseError);
+                        return null;
+                    }
+                } else {
+                    console.warn("No explanation content from LLM:", result);
+                    return null;
+                }
+            } catch (error) {
+                console.error("Error during explanation generation:", error);
+                displayError(`Failed to get explanation: ${error.message}`);
+                return null;
+            }
+        }
+
+        /**
+         * Updates the search history panel with the latest search terms.
+         * Limits the history to 10 unique items.
+         */
+        function updateSearchHistoryPanel() {
+            // Clear existing list
+            searchHistoryPanel.innerHTML = `
+                <h2 class="text-2xl font-bold text-sky-400 mb-4 text-center">Search History</h2>
+                <ul id="historyList" class="w-full space-y-2"></ul>
+            `;
+            const historyList = document.getElementById('historyList');
+
+            // Add unique terms to history, limit to 10
+            const uniqueHistory = Array.from(new Set(searchHistory)); // Ensure uniqueness
+            searchHistory = uniqueHistory.slice(0, 10); // Limit to 10 most recent unique searches
+
+            searchHistory.forEach(term => {
+                const listItem = document.createElement('li');
+                const button = document.createElement('button');
+                button.textContent = term;
+                button.classList.add('w-full', 'text-left', 'px-3', 'py-2', 'rounded-md', 'transition-colors', 'duration-200', 'text-sky-300', 'hover:bg-slate-700');
+                button.setAttribute('data-term', term);
+                button.addEventListener('click', () => {
+                    postcodeValue.value = term; // Set the input field
+                    postcodeForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })); // Trigger form submission
+                });
+                listItem.appendChild(button);
+                historyList.appendChild(listItem);
+            });
+        }
+
+
+        // Event listener for form submission
         postcodeForm.addEventListener('submit', async (event) => {
             event.preventDefault();
             const postcode = postcodeValue.value.trim();
 
-            if (!postcode) { displayError("Please enter a postcode."); return; }
-            if (!MAPS_API_KEY || MAPS_API_KEY === "YOUR_GOOGLE_MAPS_API_KEY_HERE") { displayError("Google Maps API Key is not configured."); return; }
-            if (!textModel && !GEMINI_API_KEY) { displayError("Gemini API Key for text generation is not configured and SDK couldn't initialize."); return; }
-             // Note: GEMINI_API_KEY is also used for image generation directly.
+            // Add current search term to history (if not empty and not already the first item)
+            if (postcode && (searchHistory.length === 0 || searchHistory[0] !== postcode)) {
+                searchHistory.unshift(postcode); // Add to the beginning
+                searchHistory = searchHistory.slice(0, 10); // Keep only the latest 10
+                updateSearchHistoryPanel();
+            }
 
-            // Clear UI
-            storyOutput.innerHTML = '';
-            imageContainer.innerHTML = '';
-            audioButtonContainer.classList.add('hidden');
-            audioPlayer.src = '';
-            ttsStatus.textContent = ''; ttsStatus.classList.add('hidden');
+            // Input validation and API key checks
+            if (!postcode) { displayError("Please enter a postcode or location."); return; }
+            if (!MAPS_API_KEY || MAPS_API_KEY === "" || MAPS_API_KEY === "YOUR_MAPS_API_KEY") { displayError("Google Maps API Key is not configured. Geocoding will be skipped."); /* Continue without geocoding if key is missing */ }
+            if (!textModel && (GEMINI_API_KEY === "" || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY")) { displayError("Gemini API Key for text generation is not configured and SDK couldn't initialize."); return; }
+
+            // Clear global status messages and show loading indicator
             geocodingStatus.textContent = ''; geocodingStatus.classList.add('hidden');
             imageGenStatus.textContent = ''; imageGenStatus.classList.add('hidden');
             errorMessage.classList.add('hidden'); errorMessage.textContent = '';
             loadingIndicator.classList.remove('hidden');
-            playAudioButton.disabled = false;
 
-            let determinedLocation = postcode;
+            let determinedLocation = postcode; // Default to raw postcode if geocoding fails or skipped
 
             try {
-                // --- Step 1: Geocode Postcode ---
-                geocodingStatus.textContent = `Geocoding postcode: ${postcode}...`;
-                geocodingStatus.classList.remove('hidden');
-                const geocodingUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(postcode)}&key=${MAPS_API_KEY}`;
-                const mapsResponse = await fetch(geocodingUrl);
-                const mapsData = await mapsResponse.json();
+                // --- Step 1: Geocode Postcode (if API key is available) ---
+                if (MAPS_API_KEY && MAPS_API_KEY !== "" && MAPS_API_KEY !== "YOUR_MAPS_API_KEY") {
+                    geocodingStatus.textContent = `Unearthing location for: ${postcode}...`;
+                    geocodingStatus.classList.remove('hidden');
+                    const geocodingUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(postcode)}&key=${MAPS_API_KEY}`;
+                    const mapsResponse = await fetch(geocodingUrl);
+                    const mapsData = await mapsResponse.json();
 
-                if (mapsData.status === "OK" && mapsData.results && mapsData.results.length > 0) {
-                    determinedLocation = mapsData.results[0].formatted_address;
-                    geocodingStatus.textContent = `Location identified: ${determinedLocation}`;
+                    if (mapsData.status === "OK" && mapsData.results && mapsData.results.length > 0) {
+                        determinedLocation = mapsData.results[0].formatted_address;
+                        geocodingStatus.textContent = `Location revealed: ${determinedLocation}`;
+                    } else {
+                        geocodingStatus.textContent = `Could not pinpoint exact location. Using "${postcode}" directly. Status: ${mapsData.status}`;
+                    }
                 } else {
-                    geocodingStatus.textContent = `Could not geocode postcode. Using postcode directly. Status: ${mapsData.status}`;
+                    geocodingStatus.textContent = `Using "${postcode}" directly (Maps API key missing/default).`;
+                    geocodingStatus.classList.remove('hidden');
                 }
 
                 // --- Step 2: Generate Historical Story (Text) ---
                 if (!textModel) { // Check if textModel initialized (relevant if GEMINI_API_KEY was initially empty)
-                    displayError("Gemini text model not available. Cannot generate story.");
+                    displayError("Gemini text model not available. Cannot weave a story.");
                     loadingIndicator.classList.add('hidden');
                     return;
                 }
-                geocodingStatus.textContent += ` | Generating story...`; // Append to geocoding status
+                geocodingStatus.textContent += ` | Weaving a tale...`; // Append to geocoding status
                 const storyPrompt = `
                 You are a historian and storyteller.
-                A user has provided a location, identified as: "${determinedLocation}" (derived from the postcode "${postcode}").
+                A user has provided a location, identified as: "${determinedLocation}" (derived from the original input "${postcode}").
 
                 Your tasks are:
                 1.  Based on this determined area ("${determinedLocation}"), find relevant historical information, notable events, figures, or developments.
                 2.  Write an interesting and concise historical story about this area. Be direct and focus on the narrative. Avoid conversational fluff.
                 3.  The story must be in Markdown format and include a suitable title.
-                4.  Crucially, include a line at the VERY END of your entire response formatted EXACTLY like this (do not add any text after this line):
-                    Image Suggestion: [A brief, descriptive caption for a relevant historical image, e.g., "A 19th-century map of the Sandyford area showing early farmlands" or "An early 20th-century photograph of Buckingham Palace exterior"]
-                5. Do not include the text "\`\`\`markdown"
-                If you cannot find specific historical information for "${determinedLocation}", try to find information for the broader town/city or region it belongs to, clearly stating this in the story. If no relevant historical information can be reasonably found, respond with a polite message in Markdown, still including the "Image Suggestion: [No specific image due to lack of historical data for ${determinedLocation}]" line at the very end.
+                4.  Do not include any "Image Suggestion:" line at the end of your response.
+                5.  Keep the context as a story on the book, good reading.
+                6.  Format the text as the book content, beware to remove all \`\`\`markdown
+                If you cannot find specific historical information for "${determinedLocation}", try to find information for the broader town/city or region it belongs to, clearly stating this in the story. If no relevant historical information can be reasonably found, respond with a polite message in Markdown.
                                 `;
 
                 const storyResult = await textModel.generateContent(storyPrompt);
                 const storyResponse = await storyResult.response;
-                currentTextStory = storyResponse.text();
-                storyOutput.innerHTML = convertMarkdownToHtml(currentTextStory);
-                geocodingStatus.textContent = `Location: ${determinedLocation} | Story generated.`;
+                let fullStoryText = storyResponse.text();
 
+                currentTextStory = fullStoryText.trim(); 
 
-                // --- Step 3: Generate Image based on Story ---
-                if (!GEMINI_API_KEY) {
-                    imageGenStatus.textContent = "Gemini API Key needed for image generation. Skipping image.";
+                // --- Step 3: Extract Entities ---
+                imageGenStatus.textContent = `Identifying key terms...`;
+                const entitiesToHighlight = await extractEntitiesForHighlighting(currentTextStory);
+                
+                // --- Step 4: Generate Image based on Story ---
+                let imageUrl = `https://placehold.co/600x400/E07A5F/FFFFFF?text=${encodeURIComponent("Image generation failed")}&font=lora`; // Default placeholder
+                if (GEMINI_API_KEY === "" || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY") { // Check if GEMINI_API_KEY is empty/default for image generation
+                    imageGenStatus.textContent = "Gemini API Key needed for visual echoes. Skipping image generation.";
                     imageGenStatus.classList.remove('hidden');
-                    console.warn("GEMINI_API_KEY is empty, skipping image generation.");
-                    // Optionally display a placeholder if no API key for images
+                    console.warn("GEMINI_API_KEY is empty or default, skipping image generation.");
                     const placeholderMsg = encodeURIComponent("Image generation skipped (API key missing)");
-                    imageContainer.innerHTML = `<img src="https://placehold.co/600x400/666666/FFFFFF?text=${placeholderMsg}&font=lora" alt="Image generation skipped" class="mx-auto my-4 rounded-lg shadow-md max-w-full h-auto object-contain" style="max-height: 300px;">`;
+                    imageUrl = `https://placehold.co/600x400/666666/FFFFFF?text=${placeholderMsg}&font=lora`;
                 } else {
-                    imageGenStatus.textContent = "Generating image based on the story...";
+                    imageGenStatus.textContent = "Conjuring a visual echo...";
                     imageGenStatus.classList.remove('hidden');
 
-                    // Create a concise prompt for image generation from the story
-                    const imagePromptText = `Generate a historically relevant and visually compelling image that captures the essence of the following story. Focus on key elements or the overall mood. Story: "${convertMarkdownToPlainText(currentTextStory).substring(0, 500)}..."`; // Limit prompt length
+                    let imagePromptText = `Generate a historically relevant and visually compelling image that captures the essence of the following story. Focus on key elements or the overall mood. Story: "${convertMarkdownToPlainText(currentTextStory).substring(0, 500)}..."`;
 
                     const imageApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${GEMINI_API_KEY}`;
                     const imagePayload = {
@@ -174,29 +492,62 @@
                     if (!imageGenResponse.ok) {
                         const errorDetail = await imageGenResponse.text();
                         console.error("Image generation API error response:", errorDetail);
-                        throw new Error(`Image generation failed: ${imageGenResponse.status} ${imageGenResponse.statusText}. Check console for details. Ensure your API key has 'imagen-3.0-generate-002' enabled.`);
-                    }
-
-                    const imageData = await imageGenResponse.json();
-
-                    if (imageData.predictions && imageData.predictions.length > 0 && imageData.predictions[0].bytesBase64Encoded) {
-                        const base64ImageData = imageData.predictions[0].bytesBase64Encoded;
-                        const imageUrl = `data:image/png;base64,${base64ImageData}`;
-                        imageContainer.innerHTML = `<img src="${imageUrl}" alt="AI-generated image for the story" class="mx-auto my-4 rounded-lg shadow-md max-w-full h-auto object-contain" style="max-height: 400px;">`;
-                        imageGenStatus.textContent = "Image generated successfully.";
+                        displayError(`Image generation failed: ${imageGenResponse.status} ${imageGenResponse.statusText}. Check console for details. Ensure your API key has 'imagen-3.0-generate-002' enabled.`);
                     } else {
-                        console.error("No image data received or unexpected format:", imageData);
-                        imageGenStatus.textContent = "Failed to get image data from API.";
-                         const placeholderMsg = encodeURIComponent("Image generation failed");
-                        imageContainer.innerHTML = `<img src="https://placehold.co/600x400/E07A5F/FFFFFF?text=${placeholderMsg}&font=lora" alt="Image generation failed" class="mx-auto my-4 rounded-lg shadow-md max-w-full h-auto object-contain" style="max-height: 300px;">`;
+                        const imageData = await imageGenResponse.json();
+                        if (imageData.predictions && imageData.predictions.length > 0 && imageData.predictions[0].bytesBase64Encoded) {
+                            imageUrl = `data:image/png;base64,${imageData.predictions[0].bytesBase64Encoded}`;
+                            imageGenStatus.textContent = "Visual echo created.";
+                        } else {
+                            console.error("No image data received or unexpected format:", imageData);
+                            imageGenStatus.textContent = "Failed to create visual echo.";
+                        }
                     }
                 }
-                audioButtonContainer.classList.remove('hidden');
+
+                // --- Step 5: Display Story, Image, TTS Controls, and Explore Further Buttons ---
+                const storyHtml = convertMarkdownToHtml(currentTextStory);
+                storyOutput.innerHTML = storyHtml; // Update the single storyOutput div
+                imageContainer.innerHTML = `<img src="${imageUrl}" alt="AI-generated image for the story" class="mx-auto my-4 rounded-lg shadow-md max-w-full h-auto object-contain" style="max-height: 400px;">`; // Update the single imageContainer div
+
+                // Clear previous explore further buttons and add new ones
+                const exploreFurtherDiv = document.getElementById('exploreFurtherButtons');
+                exploreFurtherDiv.innerHTML = ''; // Clear existing buttons
+                const termsTitle = document.createElement('h3');
+                termsTitle.classList.add('text-lg', 'font-semibold', 'text-sky-300', 'mb-3');
+                termsTitle.textContent = 'Explore Further:';
+                exploreFurtherDiv.appendChild(termsTitle);
+
+                if (entitiesToHighlight.length > 0) {
+                    const termsFlexContainer = document.createElement('div');
+                    termsFlexContainer.classList.add('flex', 'flex-wrap', 'gap-2');
+                    entitiesToHighlight.forEach(term => {
+                        const termButton = document.createElement('button');
+                        termButton.classList.add('highlighted-term-button', 'bg-sky-700/20', 'text-sky-300', 'hover:bg-sky-600/40', 'px-3', 'py-1', 'rounded-full', 'text-sm', 'font-medium', 'transition-colors');
+                        termButton.textContent = term;
+                        termButton.setAttribute('data-term', term);
+                        termButton.addEventListener('click', () => {
+                            postcodeValue.value = term; // Set the input field
+                            postcodeForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })); // Trigger form submission
+                        });
+                        termsFlexContainer.appendChild(termButton);
+                    });
+                    exploreFurtherDiv.appendChild(termsFlexContainer);
+                } else {
+                    const noTerms = document.createElement('p');
+                    noTerms.classList.add('text-slate-400', 'text-sm');
+                    noTerms.textContent = 'No specific terms identified for further exploration.';
+                    exploreFurtherDiv.appendChild(noTerms);
+                }
+
+                // --- Step 6: Play TTS Audio for the new story ---
+                await synthesizeAndPlayAudio(currentTextStory, audioPlayer, ttsStatus); // Use direct audioPlayer and ttsStatus
+
+                geocodingStatus.textContent = `Location: ${determinedLocation} | Story unveiled.`;
 
             } catch (error) {
                 console.error("Error during processing:", error);
                 displayError(`Sorry, an error occurred: ${error.message}. Check console for details.`);
-                imageContainer.innerHTML = ''; // Clear image on error
                 geocodingStatus.classList.add('hidden');
                 imageGenStatus.classList.add('hidden');
             } finally {
@@ -204,169 +555,263 @@
             }
         });
 
-        playAudioButton.addEventListener('click', async () => {
-            if (!currentTextStory) { ttsStatus.textContent = "No story available."; ttsStatus.classList.remove('hidden'); return; }
-            if (!TTS_API_KEY || TTS_API_KEY === "YOUR_GOOGLE_TTS_API_KEY_HERE") {
-                ttsStatus.textContent = "TTS API Key not configured."; ttsStatus.classList.remove('hidden'); return;
+        // Audio player event listeners for status updates (for TTS audio)
+        // These now directly target the single audioPlayer and ttsStatus elements
+        audioPlayer.onended = () => {
+            ttsStatus.textContent = "Audio echo finished.";
+        };
+        audioPlayer.onerror = () => {
+            ttsStatus.textContent = "Error playing audio echo.";
+        };
+        audioPlayer.onpause = () => {
+            if (audioPlayer.currentTime > 0 && !audioPlayer.ended) {
+                ttsStatus.textContent = "Audio echo paused.";
             }
+        };
+        audioPlayer.onplaying = () => {
+            ttsStatus.textContent = "Playing audio echo...";
+        };
 
-            const plainTextForTTS = convertMarkdownToPlainText(currentTextStory);
-            playAudioButton.disabled = true;
-            ttsStatus.textContent = "Generating audio..."; ttsStatus.classList.remove('hidden');
-            audioPlayer.src = '';
+        // --- Event Listener for Text Selection in Story Output ---
+        storyOutput.addEventListener('mouseup', async (event) => {
+            const selection = window.getSelection();
+            const selectedText = selection.toString().trim();
 
-            const ttsUrl = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${TTS_API_KEY}`;
-            const requestBody = {
-                input: { text: plainTextForTTS.substring(0, 4999) },
-                voice: { languageCode: 'en-GB', name: 'en-GB-Wavenet-A', ssmlGender: 'FEMALE' },
-                audioConfig: { audioEncoding: 'MP3' }
-            };
-
-            try {
-                const ttsResponse = await fetch(ttsUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestBody) });
-                if (!ttsResponse.ok) { const err = await ttsResponse.json(); throw new Error(`TTS API: ${err.error?.message || ttsResponse.statusText}`); }
-                const resData = await ttsResponse.json();
-                if (resData.audioContent) {
-                    audioPlayer.src = `data:audio/mp3;base64,${resData.audioContent}`;
-                    audioPlayer.play();
-                    ttsStatus.textContent = "Playing audio...";
-                } else { throw new Error("No audio content from TTS API."); }
-            } catch (err) {
-                console.error("TTS Error:", err);
-                ttsStatus.textContent = `TTS Error: ${err.message.substring(0,100)}`;
-                displayError(`TTS failed. Key valid & API enabled?`);
-            } finally {
-                playAudioButton.disabled = false;
+            if (selectedText.length > 2 && selectedText.length < 100 && storyOutput.contains(selection.anchorNode)) {
+                // Only process if text is selected within the storyOutput and is a reasonable length
+                showExplanationModal('Loading...', '', 'Fetching explanation...');
+                const explanationData = await getExplanationForSelectedText(selectedText, currentTextStory);
+                if (explanationData) {
+                    explanationTerm.textContent = explanationData.term || selectedText;
+                    explanationType.textContent = explanationData.type ? `(${explanationData.type})` : '';
+                    explanationContent.textContent = explanationData.explanation || 'No explanation found.';
+                } else {
+                    explanationTerm.textContent = selectedText;
+                    explanationType.textContent = '';
+                    explanationContent.textContent = 'Could not retrieve explanation.';
+                }
+                showExplanationModal();
             }
         });
 
-        audioPlayer.onended = () => { ttsStatus.textContent = "Audio finished."; };
-        audioPlayer.onerror = () => { ttsStatus.textContent = "Error playing audio."; playAudioButton.disabled = false; };
-        audioPlayer.onpause = () => { if (audioPlayer.currentTime > 0 && !audioPlayer.ended) ttsStatus.textContent = "Audio paused."; };
-        audioPlayer.onplaying = () => { ttsStatus.textContent = "Playing audio..."; };
-
-        function displayError(message) {
-            errorMessage.textContent = message;
-            errorMessage.classList.remove('hidden');
+        // --- Modal Control Functions ---
+        function showExplanationModal(term = '', type = '', content = '') {
+            if (term) explanationTerm.textContent = term;
+            if (type) explanationType.textContent = type;
+            if (content) explanationContent.textContent = content;
+            explanationModal.classList.remove('hidden');
+            explanationModal.classList.add('flex'); // Use flex to center
         }
 
-        function convertMarkdownToPlainText(markdown) {
-            let text = markdown;
-            text = text.replace(/^#+\s+(.*)/gm, '$1. ');
-            text = text.replace(/[\*_]{1,2}(.*?)[*_]{1,2}/g, '$1');
-            text = text.replace(/!\[(.*?)\]\(.*?\)/g, '$1');
-            text = text.replace(/\[(.*?)\]\(.*?\)/g, '$1');
-            text = text.replace(/^\s*[\*\-\+]\s+/gm, '');
-            text = text.replace(/\n\s*\n/g, '. ');
-            text = text.replace(/\n/g, ' ');
-            text = text.replace(/\s+/g, ' ').trim();
-            return text;
+        function hideExplanationModal() {
+            explanationModal.classList.remove('flex');
+            explanationModal.classList.add('hidden');
         }
 
-        function convertMarkdownToHtml(markdown) {
-            let html = markdown;
-            html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
-            html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
-            html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
-            html = html.replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>');
-            html = html.replace(/__(.*?)__/gim, '<strong>$1</strong>');
-            html = html.replace(/\*(.*?)\*/gim, '<em>$1</em>');
-            html = html.replace(/_(.*?)_/gim, '<em>$1</em>');
-            
-            html = html.replace(/^\s*[\*\-\+]\s+(.*)/gim, (match, item) => `<li>${item}</li>`);
-            let inList = false;
-            html = html.split('\n').map(line => {
-                if (line.startsWith('<li>') && !inList) { inList = true; return '<ul>' + line; }
-                if (!line.startsWith('<li>') && inList) { inList = false; return '</ul>' + line; }
-                return line;
-            }).join('\n');
-            if (inList) html += '</ul>';
+        // Close modal when close button is clicked
+        explanationCloseBtn.addEventListener('click', hideExplanationModal);
 
-            html = html.split(/\n\s*\n/).map(paragraph => {
-                const trimmed = paragraph.trim();
-                if (!trimmed) return '';
-                if (trimmed.match(/^<(h[1-6]|ul|ol|li|blockquote|pre|hr)/i)) return trimmed;
-                return `<p>${trimmed.replace(/\n/g, '<br>')}</p>`;
-            }).join('');
-            html = html.replace(/<p><\/p>/g, '').replace(/<p><br\s*\/?>\s*<\/p>/gi, '');
-            return html;
-        }
+        // Close modal when clicking outside of it
+        explanationModal.addEventListener('click', (event) => {
+            if (event.target === explanationModal) {
+                hideExplanationModal();
+            }
+        });
+
+
+        // Initial update of search history panel on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            updateSearchHistoryPanel();
+        });
 
     </script>
     <style>
         body { font-family: 'Inter', sans-serif; }
-        #storyOutput h1 { font-size: 1.875rem; font-weight: bold; margin-top: 1rem; margin-bottom: 0.5rem; }
-        #storyOutput h2 { font-size: 1.5rem; font-weight: bold; margin-top: 0.875rem; margin-bottom: 0.4rem; }
-        #storyOutput h3 { font-size: 1.25rem; font-weight: bold; margin-top: 0.75rem; margin-bottom: 0.3rem; }
-        #storyOutput p { margin-bottom: 1rem; line-height: 1.6; }
-        #storyOutput strong { font-weight: bold; }
-        #storyOutput em { font-style: italic; }
-        #storyOutput ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 1rem; padding-left: 1rem;}
-        #storyOutput li { margin-bottom: 0.25rem; }
-        #audioPlayer { margin-top: 0.5rem; width: 100%; border-radius: 0.375rem; }
+        /* Custom styles for Markdown rendered content */
+        .prose h1 { font-size: 1.875rem; font-weight: bold; margin-top: 1rem; margin-bottom: 0.5rem; color: #60A5FA; /* Sky-400 equivalent */ }
+        .prose h2 { font-size: 1.5rem; font-weight: bold; margin-top: 0.875rem; margin-bottom: 0.4rem; color: #93C5FD; /* Sky-300 equivalent */ }
+        .prose h3 { font-size: 1.25rem; font-weight: bold; margin-top: 0.75rem; margin-bottom: 0.3rem; color: #BFDBFE; /* Sky-200 equivalent */ }
+        .prose p { margin-bottom: 1rem; line-height: 1.6; }
+        .prose strong { font-weight: bold; }
+        .prose em { font-style: italic; }
+        .prose ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 1rem; padding-left: 1rem;}
+        .prose li { margin-bottom: 0.25rem; }
+        
+        /* Direct audio player and image container styles */
+        #audioPlayer { margin-top: 0.5rem; width: 100%; border-radius: 0.375rem; background-color: #334155; }
         #imageContainer img { display: block; }
+
+        /* Styles for the clickable buttons at the bottom of the story */
+        .highlighted-term-button {
+            @apply bg-sky-700/20 text-sky-300 hover:bg-sky-600/40 px-3 py-1 rounded-full text-sm font-medium transition-colors;
+            white-space: nowrap; /* Prevent wrapping for single terms */
+        }
+
+        /* Main layout container for panels */
+        #main-content-container {
+            display: flex;
+            flex-direction: column; /* Stack on small screens */
+            gap: 1.5rem; /* Space between left and right panels */
+            width: 100%;
+            max-width: 60rem; /* Adjusted max-width back for single story panel */
+        }
+
+        /* Left Panel: Search History */
+        #searchHistoryPanel {
+            flex: 0 0 auto; /* Don't grow, don't shrink */
+            width: 100%; /* Full width on small screens */
+            background-color: #1e293b; /* Slate-800 equivalent */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-2xl */
+            border-radius: 0.75rem; /* rounded-xl */
+            padding: 1.5rem;
+            align-self: flex-start; /* Align to top */
+            max-height: 90vh; /* Limit height for scrolling */
+            overflow-y: auto; /* Enable scrolling for history list */
+        }
+        #searchHistoryPanel ul {
+            list-style: none;
+            padding: 0;
+        }
+        #searchHistoryPanel button {
+            text-align: left;
+        }
+
+        /* Right Panel: Form and Story Display (now combined) */
+        #right-content-area {
+            flex: 1; /* Take remaining space */
+            display: flex;
+            flex-direction: column;
+            background-color: #1e293b; /* Slate-800 equivalent */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-2xl */
+            border-radius: 0.75rem; /* rounded-xl */
+            padding: 1.5rem;
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000; /* Ensure it's on top */
+        }
+
+        .modal-content {
+            background-color: #1e293b; /* Slate-800 */
+            padding: 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            max-width: 500px;
+            width: 90%;
+            color: #E2E8F0; /* Slate-200 */
+            position: relative;
+        }
+
+        .modal-close-btn {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: #94A3B8; /* Slate-400 */
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .modal-close-btn:hover {
+            color: #CBD5E1; /* Slate-300 */
+        }
+
+        /* Responsive adjustments for larger screens */
+        @media (min-width: 768px) { /* md breakpoint */
+            #main-content-container {
+                flex-direction: row; /* Side-by-side on larger screens */
+            }
+            #searchHistoryPanel {
+                width: 25%; /* Left panel takes 1/4th width */
+            }
+            #right-content-area {
+                width: 75%; /* Right panel takes 3/4th width */
+            }
+        }
     </style>
 </head>
 <body class="bg-gradient-to-br from-slate-900 to-slate-800 text-slate-100 min-h-screen flex flex-col items-center justify-center p-4 selection:bg-sky-500 selection:text-white">
 
-    <div class="bg-slate-800 shadow-2xl rounded-xl p-6 md:p-10 w-full max-w-2xl">
-        <header class="text-center mb-8">
-            <h1 class="text-4xl font-bold text-sky-400">Historical Story Finder</h1>
-            <p class="text-slate-400 mt-2">Enter a postcode to discover historical stories from its vicinity, with an AI-generated image.</p>
-        </header>
+    <audio autoplay loop style="display:none;">
+      <source src="LandingPageMusic.mp3" type="audio/mp3">
+    </audio>
 
-        <form id="postcodeForm" class="space-y-6">
-            <div>
-                <label for="postcode" class="block text-sm font-medium text-sky-300 mb-1">Postcode</label>
-                <input type="text" name="postcode" id="postcode" required
-                       class="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all"
-                       placeholder="e.g., SW1A 1AA or D16 TX97">
+    <div id="main-content-container">
+        <div id="searchHistoryPanel" class="hidden md:block">
             </div>
-            <button type="submit"
-                    class="w-full bg-sky-600 hover:bg-sky-500 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:shadow-lg transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-opacity-50">
-                Discover History
-            </button>
-        </form>
 
-        <div id="loadingIndicator" class="mt-8 text-center hidden">
-            <div class="inline-flex items-center">
-                <svg class="animate-spin -ml-1 mr-3 h-6 w-6 text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        <div id="right-content-area">
+            <header class="text-center mb-8">
+                <h1 class="text-4xl font-bold text-sky-400">Echoes</h1>
+                <p class="text-slate-400 mt-2">Uncover the whispers of the past. Enter a location to hear its historical echoes and see a glimpse of its story.</p>
+            </header>
+
+            <form id="postcodeForm" class="space-y-6 mb-8">
+                <div>
+                    <label for="postcode" class="block text-sm font-medium text-sky-300 mb-1">Location (e.g., Postcode, City, Landmark)</label>
+                    <input type="text" name="postcode" id="postcode" required
+                            class="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all"
+                            placeholder="e.g., London, Eiffel Tower, D16 TX97">
+                </div>
+                <button type="submit"
+                        class="w-full bg-sky-600 hover:bg-sky-500 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:shadow-lg transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-opacity-50">
+                Unveil the Past
+                </button>
+            </form>
+
+            <div id="loadingIndicator" class="mt-8 text-center hidden">
+                <div class="inline-flex items-center">
+                    <svg class="animate-spin -ml-1 mr-3 h-6 w-6 text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                <span class="text-slate-300">Processing...</span>
+                    <span class="text-slate-300">Summoning history...</span>
+                </div>
             </div>
-        </div>
-        
-        <p id="geocodingStatus" class="mt-4 text-sm text-sky-300 text-center hidden"></p>
-        <p id="imageGenStatus" class="mt-2 text-sm text-sky-300 text-center hidden"></p>
+            
+            <p id="geocodingStatus" class="mt-4 text-sm text-sky-300 text-center hidden"></p>
+            <p id="imageGenStatus" class="mt-2 text-sm text-sky-300 text-center hidden"></p>
 
 
-        <div id="errorMessage" class="mt-6 bg-red-700/30 border border-red-600 text-red-300 px-4 py-3 rounded-lg hidden" role="alert">
-        </div>
-        
-        <div id="imageContainer" class="mt-6 text-center">
-        </div>
-
-        <article id="storyOutput" class="mt-4 prose prose-invert max-w-none text-slate-200">
-        </article>
-
-        <div id="audioButtonContainer" class="mt-8 text-center hidden">
-            <button id="playAudioButton"
-                    class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:shadow-lg transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed">
-                ▶️ Read Aloud
-            </button>
-            <p id="ttsStatus" class="text-sm text-slate-400 mt-2 hidden"></p>
-            <audio id="audioPlayer" controls class="mt-3 w-full rounded-md"></audio>
-            <p class="text-xs text-slate-500 mt-2">
-                <strong class="text-amber-400">Warning:</strong> API keys are exposed client-side. For production, use a secure backend.
-            </p>
+            <div id="errorMessage" class="mt-6 bg-red-700/30 border border-red-600 text-red-300 px-4 py-3 rounded-lg hidden" role="alert">
+            </div>
+            
+            <div id="storyDisplayArea" class="bg-slate-700 shadow-lg rounded-xl p-6 flex flex-col space-y-4 overflow-y-auto max-h-[80vh]">
+                <article id="storyOutput" class="prose prose-invert max-w-none text-slate-200"></article>
+                <div id="imageContainer" class="text-center"></div>
+                <div class="text-center mt-4">
+                    <p id="ttsStatus" class="text-sm text-slate-400 mt-2 hidden"></p>
+                    <audio id="audioPlayer" controls class="mt-3 w-full rounded-md bg-slate-600"></audio>
+                </div>
+                <div id="exploreFurtherButtons" class="mt-6 pt-4 border-t border-slate-600">
+                    </div>
+            </div>
         </div>
     </div>
 
-    <footer class="text-center text-slate-500 mt-12 text-sm">
-        <p>&copy; <span id="currentYear"></span> Historical Story Finder. Powered by Gemini, Google Maps & Google Cloud TTS.</p>
+    <footer class="text-center text-slate-500 mt-12 text-sm w-full">
+        <p>&copy; <span id="currentYear"></span> Echoes. Powered by Gemini, Google Maps & Google Cloud TTS.</p>
     </footer>
+
+    <div id="explanationModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <button id="explanationCloseBtn" class="modal-close-btn">&times;</button>
+            <h3 class="text-xl font-bold text-sky-400 mb-2"><span id="explanationTerm"></span> <span id="explanationType" class="text-sm text-slate-400 font-normal"></span></h3>
+            <p id="explanationContent" class="text-slate-200"></p>
+        </div>
+    </div>
+
     <script>
         document.getElementById('currentYear').textContent = new Date().getFullYear();
     </script>
