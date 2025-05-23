@@ -716,17 +716,32 @@
             cameraStatus.textContent = "Requesting camera access...";
             cameraStatus.classList.remove('hidden');
             try {
-                // Request access to the user's camera
-                currentStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                // Attempt to get the 'environment' (back) camera first
+                currentStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { exact: "environment" }
+                    }
+                });
                 cameraFeed.srcObject = currentStream;
                 cameraFeedContainer.classList.remove('hidden');
                 cameraFeedContainer.classList.add('flex'); // Show as flex
                 openCameraButton.classList.add('hidden');
                 cameraStatus.textContent = "Camera active. Capture your moment!";
             } catch (err) {
-                console.error("Error accessing camera:", err);
-                cameraStatus.textContent = "Failed to access camera. Please ensure permissions are granted.";
-                displayError(`Camera access denied or error: ${err.message}`);
+                console.warn("Failed to access environment camera, trying user camera:", err);
+                // Fallback to 'user' (front) camera if 'environment' fails
+                try {
+                    currentStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    cameraFeed.srcObject = currentStream;
+                    cameraFeedContainer.classList.remove('hidden');
+                    cameraFeedContainer.classList.add('flex'); // Show as flex
+                    openCameraButton.classList.add('hidden');
+                    cameraStatus.textContent = "Camera active (front camera). Capture your moment!";
+                } catch (fallbackErr) {
+                    console.error("Error accessing any camera:", fallbackErr);
+                    cameraStatus.textContent = "Failed to access camera. Please ensure permissions are granted.";
+                    displayError(`Camera access denied or error: ${fallbackErr.message}`);
+                }
             }
         });
 
