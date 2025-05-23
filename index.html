@@ -420,7 +420,8 @@
                 return null;
             }
 
-            const prompt = "What is the most prominent location or landmark visible in this image? Provide only the name of the location (e.g., 'Eiffel Tower', 'Golden Gate Bridge', 'Central Park, New York') or a very brief, general description (e.g., 'A city street', 'A natural landscape') if no specific landmark is found. Do not include any other conversational text.";
+            // Modified prompt for deeper location inference
+            const prompt = "Analyze this image and identify the most probable geographic location or region it represents. Consider any landmarks, natural features, animals, objects, cultural elements, or contextual clues present in the image. If a specific landmark is visible, name it. If not, infer the most likely city, region, or country. Provide only the inferred location name (e.g., 'Eiffel Tower, Paris', 'Sichuan Province, China', 'Amazon Rainforest') and nothing else.";
 
             try {
                 const payload = {
