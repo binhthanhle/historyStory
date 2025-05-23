@@ -68,7 +68,7 @@
         const geocodingStatus = document.getElementById('geocodingStatus');
         const imageGenStatus = document.getElementById('imageGenStatus');
         
-        // Direct references for single story display
+        // Re-added direct references for single story display
         const storyOutput = document.getElementById('storyOutput');
         const imageContainer = document.getElementById('imageContainer');
         const audioPlayer = document.getElementById('audioPlayer'); // This is for TTS audio
@@ -76,7 +76,12 @@
 
         const searchHistoryPanel = document.getElementById('searchHistoryPanel'); // Left panel for search history
 
-        // Removed: New DOM elements for the explanation modal
+        // New DOM elements for the explanation modal
+        const explanationModal = document.getElementById('explanationModal');
+        const explanationTerm = document.getElementById('explanationTerm');
+        const explanationType = document.getElementById('explanationType');
+        const explanationContent = document.getElementById('explanationContent');
+        const explanationCloseBtn = document.getElementById('explanationCloseBtn');
 
 
         // Global variable to hold the current story text for TTS
@@ -198,25 +203,29 @@
         }
 
         /**
-         * Calls the Gemini API to get 5 closest neighborhood areas or significant related places/landmarks.
-         * @param {string} determinedLocation The primary location for which to find related places.
-         * @returns {Promise<string[]>} A promise that resolves to an array of strings, where each string is a related place.
+         * Calls the Gemini API to extract entities (names, places, objects) from a given text.
+         * @param {string} text The story text from which to extract entities.
+         * @returns {Promise<string[]>} A promise that resolves to an array of strings, where each string is an entity to highlight.
          */
-        async function getRelatedPlacesForExploration(determinedLocation) {
+        async function extractEntitiesForHighlighting(text) {
             if (!textModel) {
-                console.warn("Gemini text model not available. Cannot get related places for exploration.");
+                console.warn("Gemini text model not available. Cannot extract entities for highlighting.");
                 return [];
             }
 
-            const relatedPlacesPrompt = `
-            Given the location: "${determinedLocation}", identify and list the 5 closest neighborhood areas or significant related places/landmarks.
-            Provide the response as a JSON array of strings.
+            const entityPrompt = `
+            Given the following story, identify and list the 5 most significant names of places, areas, or objects directly related to the place mentioned in the story.
+            Provide the response as a JSON array of strings, where each string is a term to be highlighted.
             Do not include any other text or formatting outside the JSON array.
+            Story:
+            """
+            ${text}
+            """
             `;
 
             try {
                 const payload = {
-                    contents: [{ role: "user", parts: [{ text: relatedPlacesPrompt }] }],
+                    contents: [{ role: "user", parts: [{ text: entityPrompt }] }],
                     generationConfig: {
                         responseMimeType: "application/json",
                         responseSchema: {
@@ -238,7 +247,7 @@
 
                 if (!response.ok) {
                     const errorDetails = await response.text();
-                    throw new Error(`Related places API error: ${response.status} ${response.statusText} - ${errorDetails}`);
+                    throw new Error(`Entity extraction API error: ${response.status} ${response.statusText} - ${errorDetails}`);
                 }
 
                 const result = await response.json();
@@ -247,25 +256,102 @@
                     result.candidates[0].content.parts.length > 0) {
                     const jsonString = result.candidates[0].content.parts[0].text;
                     try {
-                        const places = JSON.parse(jsonString);
-                        if (Array.isArray(places)) {
-                            return places.slice(0, 5); // Ensure max 5 items
+                        const entities = JSON.parse(jsonString);
+                        if (Array.isArray(entities)) {
+                            return entities.slice(0, 5); // Ensure max 5 items
                         } else {
-                            console.warn("LLM returned non-array for related places:", places);
+                            console.warn("LLM returned non-array for entities:", entities);
                             return [];
                         }
                     } catch (parseError) {
-                        console.error("Failed to parse LLM related places response as JSON:", jsonString, parseError);
+                        console.error("Failed to parse LLM entity response as JSON:", jsonString, parseError);
                         return [];
                     }
                 } else {
-                    console.warn("No related places content from LLM:", result);
+                    console.warn("No entity content from LLM:", result);
                     return [];
                 }
             } catch (error) {
-                console.error("Error during related places extraction:", error);
-                displayError(`Failed to get related places: ${error.message}`);
+                console.error("Error during entity extraction:", error);
+                displayError(`Failed to extract entities for highlighting: ${error.message}`);
                 return [];
+            }
+        }
+
+        /**
+         * Calls the Gemini API to explain a selected text/phrase.
+         * @param {string} selectedText The text/phrase selected by the user.
+         * @param {string} fullStoryContext The full story text for context.
+         * @returns {Promise<{term: string, type: string, explanation: string}|null>} A promise that resolves to an object containing the explanation, or null if an error occurs.
+         */
+        async function getExplanationForSelectedText(selectedText, fullStoryContext) {
+            if (!textModel) {
+                console.warn("Gemini text model not available. Cannot get explanation.");
+                return null;
+            }
+
+            const explanationPrompt = `
+            Given the following selected text/phrase from a story, provide a brief explanation or definition.
+            Also, identify its type: "place", "area", "human", "object", or "concept".
+            Provide the response as a JSON object with keys: "term", "type", and "explanation".
+            Ensure the "explanation" is concise and directly relevant to the context of the story.
+            Do not include any other text or formatting outside the JSON object.
+
+            Selected Text: "${selectedText}"
+            Full Story Context: "${fullStoryContext.substring(0, 1000)}..."
+            `;
+
+            try {
+                const payload = {
+                    contents: [{ role: "user", parts: [{ text: explanationPrompt }] }],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "OBJECT",
+                            properties: {
+                                "term": { "type": "STRING" },
+                                "type": { "type": "STRING" },
+                                "explanation": { "type": "STRING" }
+                            },
+                            required: ["term", "type", "explanation"]
+                        }
+                    }
+                };
+
+                const apiKey = GEMINI_API_KEY === "YOUR_GEMINI_API_KEY" ? "" : GEMINI_API_KEY;
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorDetails = await response.text();
+                    throw new Error(`Explanation API error: ${response.status} ${response.statusText} - ${errorDetails}`);
+                }
+
+                const result = await response.json();
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const jsonString = result.candidates[0].content.parts[0].text;
+                    try {
+                        const explanationData = JSON.parse(jsonString);
+                        return explanationData;
+                    } catch (parseError) {
+                        console.error("Failed to parse LLM explanation response as JSON:", jsonString, parseError);
+                        return null;
+                    }
+                } else {
+                    console.warn("No explanation content from LLM:", result);
+                    return null;
+                }
+            } catch (error) {
+                console.error("Error during explanation generation:", error);
+                displayError(`Failed to get explanation: ${error.message}`);
+                return null;
             }
         }
 
@@ -299,8 +385,6 @@
                 historyList.appendChild(listItem);
             });
         }
-
-        // Removed: sendFeedback function
 
 
         // Event listener for form submission
@@ -375,9 +459,9 @@
 
                 currentTextStory = fullStoryText.trim(); 
 
-                // --- Step 3: Get Related Places for Exploration ---
-                imageGenStatus.textContent = `Identifying related places...`;
-                const relatedPlaces = await getRelatedPlacesForExploration(determinedLocation);
+                // --- Step 3: Extract Entities ---
+                imageGenStatus.textContent = `Identifying key terms...`;
+                const entitiesToHighlight = await extractEntitiesForHighlighting(currentTextStory);
                 
                 // --- Step 4: Generate Image based on Story ---
                 let imageUrl = `https://placehold.co/600x400/E07A5F/FFFFFF?text=${encodeURIComponent("Image generation failed")}&font=lora`; // Default placeholder
@@ -434,10 +518,10 @@
                 termsTitle.textContent = 'Explore Further:';
                 exploreFurtherDiv.appendChild(termsTitle);
 
-                if (relatedPlaces.length > 0) {
+                if (entitiesToHighlight.length > 0) {
                     const termsFlexContainer = document.createElement('div');
                     termsFlexContainer.classList.add('flex', 'flex-wrap', 'gap-2');
-                    relatedPlaces.forEach(term => {
+                    entitiesToHighlight.forEach(term => {
                         const termButton = document.createElement('button');
                         termButton.classList.add('highlighted-term-button', 'bg-sky-700/20', 'text-sky-300', 'hover:bg-sky-600/40', 'px-3', 'py-1', 'rounded-full', 'text-sm', 'font-medium', 'transition-colors');
                         termButton.textContent = term;
@@ -471,7 +555,8 @@
             }
         });
 
-        // Audio player event listener: Show feedback modal when TTS audio ends
+        // Audio player event listeners for status updates (for TTS audio)
+        // These now directly target the single audioPlayer and ttsStatus elements
         audioPlayer.onended = () => {
             ttsStatus.textContent = "Audio echo finished.";
         };
@@ -488,10 +573,51 @@
         };
 
         // --- Event Listener for Text Selection in Story Output ---
-        // Removed: storyOutput.addEventListener('mouseup', ...);
+        storyOutput.addEventListener('mouseup', async (event) => {
+            const selection = window.getSelection();
+            const selectedText = selection.toString().trim();
 
-        // --- Explanation Modal Control Functions ---
-        // Removed: showExplanationModal, hideExplanationModal, explanationCloseBtn listeners
+            if (selectedText.length > 2 && selectedText.length < 100 && storyOutput.contains(selection.anchorNode)) {
+                // Only process if text is selected within the storyOutput and is a reasonable length
+                showExplanationModal('Loading...', '', 'Fetching explanation...');
+                const explanationData = await getExplanationForSelectedText(selectedText, currentTextStory);
+                if (explanationData) {
+                    explanationTerm.textContent = explanationData.term || selectedText;
+                    explanationType.textContent = explanationData.type ? `(${explanationData.type})` : '';
+                    explanationContent.textContent = explanationData.explanation || 'No explanation found.';
+                } else {
+                    explanationTerm.textContent = selectedText;
+                    explanationType.textContent = '';
+                    explanationContent.textContent = 'Could not retrieve explanation.';
+                }
+                showExplanationModal();
+            }
+        });
+
+        // --- Modal Control Functions ---
+        function showExplanationModal(term = '', type = '', content = '') {
+            if (term) explanationTerm.textContent = term;
+            if (type) explanationType.textContent = type;
+            if (content) explanationContent.textContent = content;
+            explanationModal.classList.remove('hidden');
+            explanationModal.classList.add('flex'); // Use flex to center
+        }
+
+        function hideExplanationModal() {
+            explanationModal.classList.remove('flex');
+            explanationModal.classList.add('hidden');
+        }
+
+        // Close modal when close button is clicked
+        explanationCloseBtn.addEventListener('click', hideExplanationModal);
+
+        // Close modal when clicking outside of it
+        explanationModal.addEventListener('click', (event) => {
+            if (event.target === explanationModal) {
+                hideExplanationModal();
+            }
+        });
+
 
         // Initial update of search history panel on page load
         document.addEventListener('DOMContentLoaded', () => {
@@ -561,8 +687,45 @@
             padding: 1.5rem;
         }
 
-        /* Removed: Modal Styles (for Explanation Modal - centered) */
-        /* Removed: Feedback Panel Styles */
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000; /* Ensure it's on top */
+        }
+
+        .modal-content {
+            background-color: #1e293b; /* Slate-800 */
+            padding: 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            max-width: 500px;
+            width: 90%;
+            color: #E2E8F0; /* Slate-200 */
+            position: relative;
+        }
+
+        .modal-close-btn {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: #94A3B8; /* Slate-400 */
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .modal-close-btn:hover {
+            color: #CBD5E1; /* Slate-300 */
+        }
 
         /* Responsive adjustments for larger screens */
         @media (min-width: 768px) { /* md breakpoint */
@@ -579,6 +742,10 @@
     </style>
 </head>
 <body class="bg-gradient-to-br from-slate-900 to-slate-800 text-slate-100 min-h-screen flex flex-col items-center justify-center p-4 selection:bg-sky-500 selection:text-white">
+
+    <audio autoplay loop style="display:none;">
+      <source src="LandingPageMusic.mp3" type="audio/mp3">
+    </audio>
 
     <div id="main-content-container">
         <div id="searchHistoryPanel" class="hidden md:block">
@@ -636,6 +803,14 @@
     <footer class="text-center text-slate-500 mt-12 text-sm w-full">
         <p>&copy; <span id="currentYear"></span> Echoes. Powered by Gemini, Google Maps & Google Cloud TTS.</p>
     </footer>
+
+    <div id="explanationModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <button id="explanationCloseBtn" class="modal-close-btn">&times;</button>
+            <h3 class="text-xl font-bold text-sky-400 mb-2"><span id="explanationTerm"></span> <span id="explanationType" class="text-sm text-slate-400 font-normal"></span></h3>
+            <p id="explanationContent" class="text-slate-200"></p>
+        </div>
+    </div>
 
     <script>
         document.getElementById('currentYear').textContent = new Date().getFullYear();
