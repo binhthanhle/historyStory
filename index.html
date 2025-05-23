@@ -83,10 +83,20 @@
         const explanationContent = document.getElementById('explanationContent');
         const explanationCloseBtn = document.getElementById('explanationCloseBtn');
 
+        // New DOM elements for camera feature
+        const openCameraButton = document.getElementById('openCameraButton');
+        const cameraFeedContainer = document.getElementById('cameraFeedContainer');
+        const cameraFeed = document.getElementById('cameraFeed');
+        const cameraCanvas = document.getElementById('cameraCanvas');
+        const capturePhotoButton = document.getElementById('capturePhotoButton');
+        const closeCameraButton = document.getElementById('closeCameraButton');
+        const cameraStatus = document.getElementById('cameraStatus');
+
 
         // Global variable to hold the current story text for TTS
         let currentTextStory = "";
         let searchHistory = []; // Array to store search history (max 10 items)
+        let currentStream; // To hold the camera stream
 
         // Function to escape HTML special characters
         function escapeHtml(unsafe) {
@@ -386,11 +396,93 @@
             });
         }
 
+        /**
+         * Analyzes a base64 encoded image to identify a relevant location using Gemini Vision API.
+         * @param {string} base64ImageData The base64 encoded image data (e.g., "data:image/png;base64,...").
+         * @returns {Promise<string|null>} A promise that resolves to the identified location string or null if not found.
+         */
+        async function analyzeImageForLocation(base64ImageData) {
+            cameraStatus.textContent = "Analyzing image for location...";
+            loadingIndicator.classList.remove('hidden');
 
-        // Event listener for form submission
+            if (!GEMINI_API_KEY || GEMINI_API_KEY === "" || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY") {
+                cameraStatus.textContent = "Gemini API Key for image analysis is not configured. Cannot analyze image.";
+                displayError("Gemini API Key needed for image analysis. Please configure it.");
+                loadingIndicator.classList.add('hidden');
+                return null;
+            }
+
+            // Extract just the base64 data part, removing the "data:image/png;base64," prefix
+            const dataPart = base64ImageData.split(',')[1];
+            if (!dataPart) {
+                displayError("Invalid image data provided for analysis.");
+                loadingIndicator.classList.add('hidden');
+                return null;
+            }
+
+            const prompt = "What is the most prominent location or landmark visible in this image? Provide only the name of the location (e.g., 'Eiffel Tower', 'Golden Gate Bridge', 'Central Park, New York') or a very brief, general description (e.g., 'A city street', 'A natural landscape') if no specific landmark is found. Do not include any other conversational text.";
+
+            try {
+                const payload = {
+                    contents: [
+                        {
+                            role: "user",
+                            parts: [
+                                { text: prompt },
+                                {
+                                    inlineData: {
+                                        mimeType: "image/png", // Assuming PNG from canvas
+                                        data: dataPart
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    generationConfig: {
+                        temperature: 0.2, // Keep it focused
+                    }
+                };
+
+                const apiKey = GEMINI_API_KEY === "YOUR_GEMINI_API_KEY" ? "" : GEMINI_API_KEY;
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorDetails = await response.text();
+                    throw new Error(`Image analysis API error: ${response.status} ${response.statusText} - ${errorDetails}`);
+                }
+
+                const result = await response.json();
+                loadingIndicator.classList.add('hidden');
+
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const identifiedLocation = result.candidates[0].content.parts[0].text.trim();
+                    cameraStatus.textContent = `Location identified: ${identifiedLocation}`;
+                    return identifiedLocation;
+                } else {
+                    cameraStatus.textContent = "Could not identify a specific location from the image.";
+                    return null;
+                }
+            } catch (error) {
+                console.error("Error during image analysis:", error);
+                displayError(`Failed to analyze image for location: ${error.message}`);
+                loadingIndicator.classList.add('hidden');
+                return null;
+            }
+        }
+
+
+        // Event listener for form submission (existing logic, now potentially called by camera)
         postcodeForm.addEventListener('submit', async (event) => {
             event.preventDefault();
-            const postcode = postcodeValue.value.trim();
+            const postcode = postcodeValue.value.trim(); // This will be the location from text input OR from camera
 
             // Add current search term to history (if not empty and not already the first item)
             if (postcode && (searchHistory.length === 0 || searchHistory[0] !== postcode)) {
@@ -618,6 +710,76 @@
             }
         });
 
+        // --- Camera Feature Event Listeners ---
+        openCameraButton.addEventListener('click', async () => {
+            errorMessage.classList.add('hidden');
+            cameraStatus.textContent = "Requesting camera access...";
+            cameraStatus.classList.remove('hidden');
+            try {
+                // Request access to the user's camera
+                currentStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                cameraFeed.srcObject = currentStream;
+                cameraFeedContainer.classList.remove('hidden');
+                cameraFeedContainer.classList.add('flex'); // Show as flex
+                openCameraButton.classList.add('hidden');
+                cameraStatus.textContent = "Camera active. Capture your moment!";
+            } catch (err) {
+                console.error("Error accessing camera:", err);
+                cameraStatus.textContent = "Failed to access camera. Please ensure permissions are granted.";
+                displayError(`Camera access denied or error: ${err.message}`);
+            }
+        });
+
+        capturePhotoButton.addEventListener('click', async () => {
+            if (!cameraFeed.srcObject) {
+                displayError("No camera feed active to capture from.");
+                return;
+            }
+
+            cameraStatus.textContent = "Capturing photo...";
+            const context = cameraCanvas.getContext('2d');
+            // Set canvas dimensions to match video feed
+            cameraCanvas.width = cameraFeed.videoWidth;
+            cameraCanvas.height = cameraFeed.videoHeight;
+            // Draw the current video frame onto the canvas
+            context.drawImage(cameraFeed, 0, 0, cameraCanvas.width, cameraCanvas.height);
+
+            // Get the image data as a Base64 encoded PNG
+            const imageDataUrl = cameraCanvas.toDataURL('image/png');
+
+            // Stop the camera stream
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                cameraFeed.srcObject = null;
+                currentStream = null;
+            }
+            cameraFeedContainer.classList.add('hidden');
+            cameraFeedContainer.classList.remove('flex');
+            openCameraButton.classList.remove('hidden');
+
+            // Analyze the captured image for location
+            const identifiedLocation = await analyzeImageForLocation(imageDataUrl);
+
+            if (identifiedLocation) {
+                postcodeValue.value = identifiedLocation; // Set the input field with identified location
+                postcodeForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })); // Trigger story generation
+            } else {
+                cameraStatus.textContent = "No clear location identified from image. Please try again or enter manually.";
+            }
+        });
+
+        closeCameraButton.addEventListener('click', () => {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                cameraFeed.srcObject = null;
+                currentStream = null;
+            }
+            cameraFeedContainer.classList.add('hidden');
+            cameraFeedContainer.classList.remove('flex');
+            openCameraButton.classList.remove('hidden');
+            cameraStatus.textContent = "";
+        });
+
 
         // Initial update of search history panel on page load
         document.addEventListener('DOMContentLoaded', () => {
@@ -769,6 +931,28 @@
                 Unveil the Past
                 </button>
             </form>
+
+            <div class="mt-8 p-6 bg-slate-700 rounded-xl shadow-lg">
+                <h2 class="text-2xl font-bold text-sky-400 mb-4 text-center">Capture a Moment</h2>
+                <div class="flex justify-center mb-4">
+                    <button id="openCameraButton" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
+                        Open Camera
+                    </button>
+                </div>
+
+                <div id="cameraFeedContainer" class="hidden flex-col items-center">
+                    <video id="cameraFeed" class="w-full max-w-md rounded-lg border border-slate-600 shadow-md" autoplay></video>
+                    <canvas id="cameraCanvas" class="hidden"></canvas>
+                    <button id="capturePhotoButton" class="mt-4 bg-green-600 hover:bg-green-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
+                        Capture Photo
+                    </button>
+                    <button id="closeCameraButton" class="mt-2 bg-red-600 hover:bg-red-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50">
+                        Close Camera
+                    </button>
+                    <p id="cameraStatus" class="mt-2 text-sm text-sky-300 text-center"></p>
+                </div>
+            </div>
+
 
             <div id="loadingIndicator" class="mt-8 text-center hidden">
                 <div class="inline-flex items-center">
