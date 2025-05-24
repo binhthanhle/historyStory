@@ -421,7 +421,7 @@
             }
 
             // Modified prompt for deeper location inference
-            const prompt = "Analyze this image and identify the most probable geographic location or region it represents. Consider any landmarks, natural features, animals, objects, cultural elements, or contextual clues present in the image. If a specific landmark is visible, name it. If not, infer the most likely city, region, or country. Provide only the inferred location name (e.g., 'Eiffel Tower, Paris', 'Sichuan Province, China', 'Amazon Rainforest') and nothing else.";
+            const prompt = "Analyze this image and identify the name of object, or most probable geographic location, or region it represents. Consider any landmarks, natural features, animals, objects, cultural elements, or contextual clues present in the image. If a specific object name is figure out, name it. If a specific landmark is visible, name it.  If not, infer the most likely city, region, or country. Provide only the inferred location name (e.g., 'Eiffel Tower, Paris', 'Sichuan Province, China', 'Amazon Rainforest') and nothing else.";
 
             try {
                 const payload = {
@@ -534,11 +534,11 @@
                 geocodingStatus.textContent += ` | Weaving a tale...`; // Append to geocoding status
                 const storyPrompt = `
                 You are a historian and storyteller.
-                A user has provided a location, identified as: "${determinedLocation}" (derived from the original input "${postcode}").
+                A user has provided a object name, human name, or location, identified as: "${determinedLocation}" (derived from the original input "${postcode}").
 
                 Your tasks are:
-                1.  Based on this determined area ("${determinedLocation}"), find relevant historical information, notable events, figures, or developments.
-                2.  Write an interesting and concise historical story about this area. Be direct and focus on the narrative. Avoid conversational fluff.
+                1.  Based on this determined object, human, or area ("${determinedLocation}"), find relevant historical information, notable events, figures, or developments.
+                2.  Write an interesting and concise historical story about this object, human , or area. Be direct and focus on the narrative. Avoid conversational fluff.
                 3.  The story must be in Markdown format and include a suitable title.
                 4.  Do not include any "Image Suggestion:" line at the end of your response.
                 5.  Keep the context as a story on the book, good reading.
