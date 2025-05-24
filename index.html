@@ -224,7 +224,7 @@
             }
 
             const entityPrompt = `
-            Given the following story, identify and list the 5 most significant names of places, areas, or objects directly related to the place mentioned in the story.
+            Given the following story, identify and list the 5 most significant names of human, objects, places, areas, or objects directly related to the place mentioned in the story.
             Provide the response as a JSON array of strings, where each string is a term to be highlighted.
             Do not include any other text or formatting outside the JSON array.
             Story:
@@ -421,7 +421,7 @@
             }
 
             // Modified prompt for deeper location inference
-            const prompt = "Analyze this image and identify the name of object, or most probable geographic location, or region it represents. Consider any landmarks, natural features, animals, objects, cultural elements, or contextual clues present in the image. If a specific object name is figure out, name it. If a specific landmark is visible, name it.  If not, infer the most likely city, region, or country. Provide only the inferred location name (e.g., 'Eiffel Tower, Paris', 'Sichuan Province, China', 'Amazon Rainforest') and nothing else.";
+            const prompt = "Analyze this image and identify the name of human, object, or most probable geographic location, or region it represents. Consider any landmarks, natural features, animals, objects, cultural elements, or contextual clues present in the image. If a specific object name is figure out, name it. If a specific landmark is visible, name it.  If not, infer the most likely city, region, or country. Provide only the inferred location name (e.g., 'Eiffel Tower, Paris', 'Sichuan Province, China', 'Amazon Rainforest') and nothing else.";
 
             try {
                 const payload = {
