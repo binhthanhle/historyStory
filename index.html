@@ -154,7 +154,6 @@
 
         <main id="right-content-area">
             <header class="text-center mb-8">
-                <img src="Gemini_Generated_Image_t1wcxt1wcxt1wcxt.jpg" alt="Echoes App Logo" class="mx-auto mb-4 w-32 h-32 object-contain rounded-full shadow-lg">
                 <h1 class="text-4xl font-bold text-sky-400">Echoes</h1>
                 <p class="text-slate-400 mt-2">Uncover the whispers of the past. Enter a name, object, or place to hear its historical echoes and glimpse its story.</p>
             </header>
@@ -579,7 +578,7 @@
                         const explanationData = JSON.parse(jsonString);
                         return explanationData;
                     } catch (parseError) {
-                        console.error("Failed to parse LLM entity response as JSON:", jsonString, parseError);
+                        console.error("Failed to parse LLM explanation response as JSON:", jsonString, parseError);
                         return null;
                     }
                 } else {
@@ -752,4 +751,320 @@
                     }
                 } else {
                     // If Maps API key is missing, determinedLocation remains the original postcode.
-                    // The status message is now handled by the general "Weaving a tale" message be
+                    // The status message is now handled by the general "Weaving a tale" message below.
+                }
+
+                // --- Step 2: Generate Historical Story (Text) ---
+                if (!textModel) { // Check if textModel initialized (relevant if GEMINI_API_KEY was initially empty)
+                    displayError("Gemini text model not available. Cannot weave a story.");
+                    loadingIndicator.classList.add('hidden');
+                    return;
+                }
+                // Only append to geocodingStatus if it's not hidden (i.e., if geocoding was attempted)
+                if (!geocodingStatus.classList.contains('hidden')) {
+                    geocodingStatus.textContent += ` | Weaving a tale...`; 
+                } else {
+                    // If geocoding was skipped/failed silently, show a general weaving message
+                    geocodingStatus.textContent = `Weaving a tale for: ${determinedLocation}...`;
+                    geocodingStatus.classList.remove('hidden');
+                }
+                
+                const storyPrompt = `
+                You are a historian and storyteller.
+                A user has provided an artifact, identified as: "${determinedLocation}" (derived from the original input "${postcode}").
+
+                Your tasks are:
+                1.  Based on this determined artifact ("${determinedLocation}"), find relevant historical information, notable events, figures, or developments.
+                2.  Write an interesting and concise historical story about this artifact.
+                3.  The story must be in Markdown format and include a suitable title.
+                4.  Do not include any "Image Suggestion:" line at the end of your response.
+                5.  Keep the context as a story on the book, good reading, without explicitly using "What?", "Where?", "When?", "Who?", "Why?", and "How?" as section headers or direct questions within the narrative. Instead, weave the answers to these questions naturally into the story's flow.
+                6.  Format the text as the book content, beware to remove all \`\`\`markdown
+                If you cannot find specific historical information for "${determinedLocation}", try to find information for the broader context (e.g., town/city or region it belongs to), clearly stating this in the story. If no relevant historical information can be reasonably found, respond with a polite message in Markdown.
+                                `;
+
+                const storyResult = await textModel.generateContent(storyPrompt);
+                const storyResponse = await storyResult.response;
+                let fullStoryText = storyResponse.text();
+
+                currentTextStory = fullStoryText.trim(); 
+
+                // --- Step 3: Extract Entities ---
+                imageGenStatus.textContent = `Identifying key terms...`;
+                const entitiesToHighlight = await extractEntitiesForHighlighting(currentTextStory);
+                
+                // --- Step 4: Generate Image based on Story ---
+                let imageUrl = `https://placehold.co/600x400/E07A5F/FFFFFF?text=${encodeURIComponent("Image generation failed")}&font=lora`; // Default placeholder
+                if (GEMINI_API_KEY === "" || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY") { // Check if GEMINI_API_KEY is empty/default for image generation
+                    imageGenStatus.textContent = "Gemini API Key needed for visual echoes. Skipping image generation.";
+                    imageGenStatus.classList.remove('hidden');
+                    console.warn("GEMINI_API_KEY is empty or default, skipping image generation.");
+                    const placeholderMsg = encodeURIComponent("Image generation skipped (API key missing)");
+                    imageUrl = `https://placehold.co/600x400/666666/FFFFFF?text=${placeholderMsg}&font=lora`;
+                } else {
+                    imageGenStatus.textContent = "Conjuring a visual echo...";
+                    imageGenStatus.classList.remove('hidden');
+
+                    let imagePromptText = `Generate a historically relevant and visually compelling image that captures the essence of the following story. Focus on key elements or the overall mood. Story: "${convertMarkdownToPlainText(currentTextStory).substring(0, 500)}..."`;
+
+                    const imageApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${GEMINI_API_KEY}`;
+                    const imagePayload = {
+                        instances: [{ prompt: imagePromptText }],
+                        parameters: { "sampleCount": 1 }
+                    };
+
+                    const imageGenResponse = await fetch(imageApiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(imagePayload)
+                    });
+
+                    if (!imageGenResponse.ok) {
+                        const errorDetail = await imageGenResponse.text();
+                        console.error("Image generation API error response:", errorDetail);
+                        displayError(`Image generation failed: ${imageGenResponse.status} ${imageGenResponse.statusText}. Check console for details. Ensure your API key has 'imagen-3.0-generate-002' enabled.`);
+                    } else {
+                        const imageData = await imageGenResponse.json();
+                        if (imageData.predictions && imageData.predictions.length > 0 && imageData.predictions[0].bytesBase64Encoded) {
+                            imageUrl = `data:image/png;base64,${imageData.predictions[0].bytesBase64Encoded}`;
+                            imageGenStatus.textContent = "Visual echo created.";
+                        } else {
+                            console.error("No image data received or unexpected format:", imageData);
+                            imageGenStatus.textContent = "Failed to create visual echo.";
+                        }
+                    }
+                }
+
+                // --- Step 5: Display Story, Image, TTS Controls, and Explore Further Buttons ---
+                const storyHtml = convertMarkdownToHtml(currentTextStory);
+                storyOutput.innerHTML = storyHtml; // Update the single storyOutput div
+                imageContainer.innerHTML = `<img src="${imageUrl}" alt="AI-generated image for the story" class="mx-auto my-4 rounded-lg shadow-md max-w-full h-auto object-contain" style="max-height: 400px;">`; // Update the single imageContainer div
+
+                // Clear previous explore further buttons and add new ones
+                const exploreFurtherDiv = document.getElementById('exploreFurtherButtons');
+                exploreFurtherDiv.innerHTML = ''; // Clear existing buttons
+                const termsTitle = document.createElement('h3');
+                termsTitle.classList.add('text-lg', 'font-semibold', 'text-sky-300', 'mb-3');
+                termsTitle.textContent = 'Explore Further:';
+                exploreFurtherDiv.appendChild(termsTitle);
+
+                if (entitiesToHighlight.length > 0) {
+                    const termsFlexContainer = document.createElement('div');
+                    termsFlexContainer.classList.add('flex', 'flex-wrap', 'gap-2');
+                    entitiesToHighlight.forEach(term => {
+                        const termButton = document.createElement('button');
+                        termButton.classList.add('highlighted-term-button', 'bg-sky-700/20', 'text-sky-300', 'hover:bg-sky-600/40', 'px-3', 'py-1', 'rounded-full', 'text-sm', 'font-medium', 'transition-colors');
+                        termButton.textContent = term;
+                        termButton.setAttribute('data-term', term);
+                        termButton.addEventListener('click', () => {
+                            postcodeValue.value = term; // Set the input field
+                            postcodeForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })); // Trigger form submission
+                        });
+                        termsFlexContainer.appendChild(termButton);
+                    });
+                    exploreFurtherDiv.appendChild(termsFlexContainer);
+                } else {
+                    const noTerms = document.createElement('p');
+                    noTerms.classList.add('text-slate-400', 'text-sm');
+                    noTerms.textContent = 'No specific terms identified for further exploration.';
+                    exploreFurtherDiv.appendChild(noTerms);
+                }
+
+                // --- Step 6: Play TTS Audio for the new story ---
+                await synthesizeAndPlayAudio(currentTextStory, audioPlayer, ttsStatus); // Use direct audioPlayer and ttsStatus
+
+                geocodingStatus.textContent = `Information revealed: ${determinedLocation} | Story unveiled.`;
+
+            } catch (error) {
+                console.error("Error during processing:", error);
+                displayError(`Sorry, an error occurred: ${error.message}. Check console for details.`);
+                geocodingStatus.classList.add('hidden');
+                imageGenStatus.classList.add('hidden');
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        });
+
+        // Audio player event listeners for status updates (for TTS audio)
+        // These now directly target the single audioPlayer and ttsStatus elements
+        audioPlayer.onended = () => {
+            ttsStatus.textContent = "Audio echo finished.";
+        };
+        audioPlayer.onerror = () => {
+            ttsStatus.textContent = "Error playing audio echo.";
+        };
+        audioPlayer.onpause = () => {
+            if (audioPlayer.currentTime > 0 && !audioPlayer.ended) {
+                ttsStatus.textContent = "Audio echo paused.";
+            }
+        };
+        audioPlayer.onplaying = () => {
+            ttsStatus.textContent = "Playing audio echo...";
+        };
+
+        // --- Event Listener for Text Selection in Story Output ---
+        storyOutput.addEventListener('mouseup', async (event) => {
+            const selection = window.getSelection();
+            const selectedText = selection.toString().trim();
+
+            if (selectedText.length > 2 && selectedText.length < 100 && storyOutput.contains(selection.anchorNode)) {
+                // Only process if text is selected within the storyOutput and is a reasonable length
+                showExplanationModal('Loading...', '', 'Fetching explanation...');
+                const explanationData = await getExplanationForSelectedText(selectedText, currentTextStory);
+                if (explanationData) {
+                    explanationTerm.textContent = explanationData.term || selectedText;
+                    explanationType.textContent = explanationData.type ? `(${explanationData.type})` : '';
+                    explanationContent.textContent = explanationData.explanation || 'No explanation found.';
+                } else {
+                    explanationTerm.textContent = selectedText;
+                    explanationType.textContent = '';
+                    explanationContent.textContent = 'Could not retrieve explanation.';
+                }
+                showExplanationModal();
+            }
+        });
+
+        // Add touch event listener for mobile selection
+        storyOutput.addEventListener('touchend', async (event) => {
+            // Prevent default touch behavior that might interfere with selection
+            event.preventDefault(); 
+            const selection = window.getSelection();
+            const selectedText = selection.toString().trim();
+
+            // Check if text is selected and it's within the storyOutput element
+            if (selectedText.length > 2 && selectedText.length < 100 && storyOutput.contains(selection.anchorNode)) {
+                showExplanationModal('Loading...', '', 'Fetching explanation...');
+                const explanationData = await getExplanationForSelectedText(selectedText, currentTextStory);
+                if (explanationData) {
+                    explanationTerm.textContent = explanationData.term || selectedText;
+                    explanationType.textContent = explanationData.type ? `(${explanationData.type})` : '';
+                    explanationContent.textContent = explanationData.explanation || 'No explanation found.';
+                } else {
+                    explanationTerm.textContent = selectedText;
+                    explanationType.textContent = '';
+                    explanationContent.textContent = 'Could not retrieve explanation.';
+                }
+                showExplanationModal();
+            }
+        });
+
+        // --- Modal Control Functions ---
+        function showExplanationModal(term = '', type = '', content = '') {
+            if (term) explanationTerm.textContent = term;
+            if (type) explanationType.textContent = type;
+            if (content) explanationContent.textContent = content;
+            explanationModal.classList.remove('hidden');
+            explanationModal.classList.add('flex'); // Use flex to center
+        }
+
+        function hideExplanationModal() {
+            explanationModal.classList.remove('flex');
+            explanationModal.classList.add('hidden');
+        }
+
+        // Close modal when close button is clicked
+        explanationCloseBtn.addEventListener('click', hideExplanationModal);
+
+        // Close modal when clicking outside of it
+        explanationModal.addEventListener('click', (event) => {
+            if (event.target === explanationModal) {
+                hideExplanationModal();
+            }
+        });
+
+        // --- Camera Feature Event Listeners ---
+        openCameraButton.addEventListener('click', async () => {
+            errorMessage.classList.add('hidden');
+            cameraStatus.textContent = "Requesting camera access...";
+            cameraStatus.classList.remove('hidden');
+            try {
+                // Attempt to get the 'environment' (back) camera first
+                currentStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { exact: "environment" }
+                    }
+                });
+                cameraFeed.srcObject = currentStream;
+                cameraFeedContainer.classList.remove('hidden');
+                cameraFeedContainer.classList.add('flex'); // Show as flex
+                openCameraButton.classList.add('hidden');
+                cameraStatus.textContent = "Camera active. Capture your moment!";
+            } catch (err) {
+                console.warn("Failed to access environment camera, trying user camera:", err);
+                // Fallback to 'user' (front) camera if 'environment' fails
+                try {
+                    currentStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    cameraFeed.srcObject = currentStream;
+                    cameraFeedContainer.classList.remove('hidden');
+                    cameraFeedContainer.classList.add('flex'); // Show as flex
+                    openCameraButton.classList.add('hidden');
+                    cameraStatus.textContent = "Camera active (front camera). Capture your moment!";
+                } catch (fallbackErr) {
+                    console.error("Error accessing any camera:", fallbackErr);
+                    cameraStatus.textContent = "Failed to access camera. Please ensure permissions are granted.";
+                    displayError(`Camera access denied or error: ${fallbackErr.message}`);
+                }
+            }
+        });
+
+        capturePhotoButton.addEventListener('click', async () => {
+            if (!cameraFeed.srcObject) {
+                displayError("No camera feed active to capture from.");
+                return;
+            }
+
+            cameraStatus.textContent = "Capturing photo...";
+            const context = cameraCanvas.getContext('2d');
+            // Set canvas dimensions to match video feed
+            cameraCanvas.width = cameraFeed.videoWidth;
+            cameraCanvas.height = cameraFeed.videoHeight;
+            // Draw the current video frame onto the canvas
+            context.drawImage(cameraFeed, 0, 0, cameraCanvas.width, cameraCanvas.height);
+
+            // Get the image data as a Base64 encoded PNG
+            const imageDataUrl = cameraCanvas.toDataURL('image/png');
+
+            // Stop the camera stream
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                cameraFeed.srcObject = null;
+                currentStream = null;
+            }
+            cameraFeedContainer.classList.add('hidden');
+            cameraFeedContainer.classList.remove('flex');
+            openCameraButton.classList.remove('hidden');
+
+            // Analyze the captured image for location
+            const identifiedLocation = await analyzeImageForLocation(imageDataUrl);
+
+            if (identifiedLocation) {
+                postcodeValue.value = identifiedLocation; // Set the input field with identified location
+                postcodeForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })); // Trigger story generation
+            } else {
+                cameraStatus.textContent = "No clear object, human, or location identified from image. Please try again or enter manually.";
+            }
+        });
+
+        closeCameraButton.addEventListener('click', () => {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                cameraFeed.srcObject = null;
+                currentStream = null;
+            }
+            cameraFeedContainer.classList.add('hidden');
+            cameraFeedContainer.classList.remove('flex');
+            openCameraButton.classList.remove('hidden');
+            cameraStatus.textContent = "";
+        });
+
+
+        // Initial update of search history panel on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            updateSearchHistoryPanel();
+            document.getElementById('currentYear').textContent = new Date().getFullYear();
+        });
+
+    </script>
+
+</body>
+</html>
