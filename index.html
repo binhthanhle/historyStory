@@ -649,7 +649,7 @@
             }
 
             // Modified prompt to prioritize object, then human, then location
-            const prompt = "Analyze this image and identify the most prominent *object*, *human*, or *geographic location* it represents. Prioritize identifying a specific object first. If no clear object, then identify a prominent human (e.g., 'Queen Elizabeth II'). If neither, then infer the most likely city, region, or country (e.g., 'Paris, France'). Provide only the identified term and nothing else.";
+            const prompt = "Analyze this image and identify the most prominent *object*, *human*, or *geographic location* it represents. Prioritize identifying a specific historical object first. If no clear object, then identify a prominent human (e.g., 'Queen Elizabeth II'). If neither, then infer the most likely city, region, or country (e.g., 'Paris, France'). Provide only the identified term and nothing else.";
 
             try {
                 const payload = {
