@@ -319,18 +319,19 @@
         // --- Gemini API Key ---
         // Leave empty to use the API key provided by the Canvas environment for Gemini models.
         // If you need to use a specific key for other models, provide it here.
-        const GEMINI_API_KEY = "AIzaSyConUa08TTGzm0HCK61gtRt25MR1TDPbw4"; // KEEP EMPTY TO USE PROVIDED KEY or gemini-2.0-flash
+        const GEMINI_API_KEY = ""; // Changed to empty string to allow Canvas environment to inject key
 
         // --- Google Cloud Text-to-Speech API Key ---
         // !!! IMPORTANT SECURITY WARNING !!!
         // For production, use a backend proxy to make this API call securely.
-        const TTS_API_KEY = "AIzaSyConUa08TTGzm0HCK61gtRt25MR1TDPbw4"; // User-provided API key
+        const TTS_API_KEY = ""; // Changed to empty string to allow Canvas environment to inject key
+
 
         // --- Google Maps Geocoding API Key ---
         // !!! IMPORTANT SECURITY WARNING !!!
         // For production, use a backend proxy to make this API call securely.
         // You need to enable the "Geocoding API" in your Google Cloud Console for this key.
-        const MAPS_API_KEY = "AIzaSyConUa08TTGzm0HCK61gtRt25MR1TDPbw4"; // User-provided API key
+        const MAPS_API_KEY = ""; // Changed to empty string to allow Canvas environment to inject key
 
 
         // Initialize Gemini Text Model (SDK)
@@ -463,8 +464,12 @@
         // Function to synthesize and play audio (for TTS)
         async function synthesizeAndPlayAudio(text, audioPlayerElement, ttsStatusElement) {
             if (!text) { ttsStatusElement.textContent = "No story available for audio."; ttsStatusElement.classList.remove('hidden'); return; }
-            if (!TTS_API_KEY || TTS_API_KEY === "" || TTS_API_KEY === "YOUR_TTS_API_KEY") {
-                ttsStatusElement.textContent = "TTS API Key not configured. Audio playback skipped."; ttsStatusElement.classList.remove('hidden'); return;
+            // Check if TTS_API_KEY is available. If not, log a warning and skip.
+            if (!TTS_API_KEY || TTS_API_KEY === "") {
+                ttsStatusElement.textContent = "TTS API Key not configured. Audio playback skipped.";
+                ttsStatusElement.classList.remove('hidden');
+                displayError("Audio generation skipped: Google Cloud Text-to-Speech API Key is missing. Please ensure it's configured and the API is enabled in your Google Cloud Console.");
+                return;
             }
 
             const plainTextForTTS = convertMarkdownToPlainText(text);
@@ -499,7 +504,7 @@
             } catch (err) {
                 console.error("TTS Error:", err);
                 ttsStatusElement.textContent = `TTS Error: ${err.message.substring(0, 100)}`;
-                displayError(`Audio generation failed. Please ensure your TTS API key is valid and the API is enabled.`);
+                displayError(`Audio generation failed: ${err.message}. Please ensure your TTS API key is valid and the API is enabled in your Google Cloud Console.`);
             }
         }
 
@@ -697,9 +702,9 @@
             cameraStatus.textContent = "Analyzing image...";
             loadingIndicator.classList.remove('hidden');
 
-            if (!GEMINI_API_KEY || GEMINI_API_KEY === "" || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY") {
+            if (!GEMINI_API_KEY || GEMINI_API_KEY === "" ) { // Removed YOUR_GEMINI_API_KEY check as it's now an empty string by default
                 cameraStatus.textContent = "Gemini API Key for image analysis is not configured. Cannot analyze image.";
-                displayError("Gemini API Key needed for image analysis. Please configure it.");
+                displayError("Gemini API Key needed for image analysis. Please ensure it's configured and the API is enabled in your Google Cloud Console.");
                 loadingIndicator.classList.add('hidden');
                 return null;
             }
@@ -758,7 +763,7 @@
                     }
                 };
 
-                const apiKey = GEMINI_API_KEY === "YOUR_GEMINI_API_KEY" ? "" : GEMINI_API_KEY;
+                const apiKey = GEMINI_API_KEY; // Use the GEMINI_API_KEY directly, which is now empty by default
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
                 const response = await fetch(apiUrl, {
@@ -787,7 +792,7 @@
                 }
             } catch (error) {
                 console.error("Error during image analysis:", error);
-                displayError(`Failed to analyze image: ${error.message}`);
+                displayError(`Failed to analyze image: ${error.message}. Please ensure your Gemini API key is valid and the Generative Language API is enabled in your Google Cloud Console.`);
                 loadingIndicator.classList.add('hidden');
                 return null;
             }
@@ -808,8 +813,8 @@
 
             // Input validation and API key checks
             if (!inputArtifact) { displayError("Please enter an artifact."); return; }
-            if (!MAPS_API_KEY || MAPS_API_KEY === "" || MAPS_API_KEY === "YOUR_MAPS_API_KEY") { console.warn("Google Maps API Key is not configured. Geocoding will be skipped."); /* Continue without geocoding if key is missing */ }
-            if (!textModel && (GEMINI_API_KEY === "" || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY")) { displayError("Gemini API Key for text generation is not configured and SDK couldn't initialize."); return; }
+            if (!MAPS_API_KEY || MAPS_API_KEY === "" ) { console.warn("Google Maps API Key is not configured. Geocoding will be skipped."); /* Continue without geocoding if key is missing */ }
+            if (!textModel && (GEMINI_API_KEY === "" )) { displayError("Gemini API Key for text generation is not configured and SDK couldn't initialize."); return; }
 
             // Clear global status messages and show loading indicator
             geocodingStatus.textContent = ''; geocodingStatus.classList.add('hidden');
@@ -826,12 +831,13 @@
             }
 
             try {
+                let payload; // Declared payload here to prevent ReferenceError
                 // --- Step 1: Geocode Postcode (if API key is available AND it's likely a location) ---
                 let geocodedAddress = null;
                 // Only attempt geocoding if the identified type is 'location' or 'general_item' (where location context might be needed)
                 // or if it's a generic text input.
                 if ((determinedArtifactType === "location" || determinedArtifactType === "general_item" || determinedArtifactType === "text_input") &&
-                    MAPS_API_KEY && MAPS_API_KEY !== "" && MAPS_API_KEY !== "YOUR_MAPS_API_KEY") {
+                    MAPS_API_KEY && MAPS_API_KEY !== "") {
                     
                     geocodingStatus.textContent = `Attempting to pinpoint for: ${inputArtifact}...`;
                     geocodingStatus.classList.remove('hidden');
@@ -942,7 +948,7 @@
                 
                 // --- Step 4: Generate Image based on Story ---
                 let imageUrl = `https://placehold.co/600x400/E07A5F/FFFFFF?text=${encodeURIComponent("Image generation failed")}&font=lora`; // Default placeholder
-                if (GEMINI_API_KEY === "" || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY") { // Check if GEMINI_API_KEY is empty/default for image generation
+                if (GEMINI_API_KEY === "" ) { // Check if GEMINI_API_KEY is empty/default for image generation
                     imageGenStatus.textContent = "Gemini API Key needed for visual echoes. Skipping image generation.";
                     imageGenStatus.classList.remove('hidden');
                     console.warn("GEMINI_API_KEY is empty or default, skipping image generation.");
@@ -963,7 +969,7 @@
                     const imageGenResponse = await fetch(imageApiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify(imagePayload)
                     });
 
                     if (!imageGenResponse.ok) {
