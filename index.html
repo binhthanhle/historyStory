@@ -174,7 +174,7 @@
             <section class="mt-8 p-6 bg-slate-700 rounded-xl shadow-lg">
                 <h2 class="text-2xl font-bold text-sky-400 mb-4 text-center">Capture a Moment</h2>
                 <div class="flex justify-center mb-4">
-                    <button id="openCameraButton" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-4 px-8 text-lg rounded-lg shadow-md transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
+                    <button id="openCameraButton" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
                         Open Camera
                     </button>
                 </div>
@@ -182,10 +182,10 @@
                 <div id="cameraFeedContainer" class="hidden flex-col items-center">
                     <video id="cameraFeed" class="w-full max-w-md rounded-lg border border-slate-600 shadow-md" autoplay></video>
                     <canvas id="cameraCanvas" class="hidden"></canvas>
-                    <button id="capturePhotoButton" class="mt-4 bg-green-600 hover:bg-green-500 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
+                    <button id="capturePhotoButton" class="mt-4 bg-green-600 hover:bg-green-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
                         Capture Photo
                     </button>
-                    <button id="closeCameraButton" class="mt-2 bg-red-600 hover:bg-red-500 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50">
+                    <button id="closeCameraButton" class="mt-2 bg-red-600 hover:bg-red-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50">
                         Close Camera
                     </button>
                     <p id="cameraStatus" class="mt-2 text-sm text-sky-300 text-center"></p>
@@ -255,19 +255,18 @@
         // --- Gemini API Key ---
         // Leave empty to use the API key provided by the Canvas environment for Gemini models.
         // If you need to use a specific key for other models, provide it here.
-        const GEMINI_API_KEY = ""; // Changed to empty string to allow Canvas environment to inject key
+        const GEMINI_API_KEY = "AIzaSyConUa08TTGzm0HCK61gtRt25MR1TDPbw4"; // KEEP EMPTY TO USE PROVIDED KEY or gemini-2.0-flash
 
         // --- Google Cloud Text-to-Speech API Key ---
         // !!! IMPORTANT SECURITY WARNING !!!
         // For production, use a backend proxy to make this API call securely.
-        const TTS_API_KEY = ""; // Changed to empty string to allow Canvas environment to inject key
-
+        const TTS_API_KEY = "AIzaSyConUa08TTGzm0HCK61gtRt25MR1TDPbw4"; // User-provided API key
 
         // --- Google Maps Geocoding API Key ---
         // !!! IMPORTANT SECURITY WARNING !!!
         // For production, use a backend proxy to make this API call securely.
         // You need to enable the "Geocoding API" in your Google Cloud Console for this key.
-        const MAPS_API_KEY = ""; // Changed to empty string to allow Canvas environment to inject key
+        const MAPS_API_KEY = "AIzaSyConUa08TTGzm0HCK61gtRt25MR1TDPbw4"; // User-provided API key
 
 
         // Initialize Gemini Text Model (SDK)
@@ -400,12 +399,8 @@
         // Function to synthesize and play audio (for TTS)
         async function synthesizeAndPlayAudio(text, audioPlayerElement, ttsStatusElement) {
             if (!text) { ttsStatusElement.textContent = "No story available for audio."; ttsStatusElement.classList.remove('hidden'); return; }
-            // Check if TTS_API_KEY is available. If not, log a warning and skip.
-            if (!TTS_API_KEY || TTS_API_KEY === "") {
-                ttsStatusElement.textContent = "TTS API Key not configured. Audio playback skipped.";
-                ttsStatusElement.classList.remove('hidden');
-                displayError("Audio generation skipped: Google Cloud Text-to-Speech API Key is missing. Please ensure it's configured and the API is enabled in your Google Cloud Console.");
-                return;
+            if (!TTS_API_KEY || TTS_API_KEY === "" || TTS_API_KEY === "YOUR_TTS_API_KEY") {
+                ttsStatusElement.textContent = "TTS API Key not configured. Audio playback skipped."; ttsStatusElement.classList.remove('hidden'); return;
             }
 
             const plainTextForTTS = convertMarkdownToPlainText(text);
@@ -440,7 +435,7 @@
             } catch (err) {
                 console.error("TTS Error:", err);
                 ttsStatusElement.textContent = `TTS Error: ${err.message.substring(0, 100)}`;
-                displayError(`Audio generation failed: ${err.message}. Please ensure your TTS API key is valid and the API is enabled in your Google Cloud Console.`);
+                displayError(`Audio generation failed. Please ensure your TTS API key is valid and the API is enabled.`);
             }
         }
 
@@ -478,7 +473,7 @@
                     }
                 };
 
-                const apiKey = GEMINI_API_KEY; // Use the GEMINI_API_KEY directly
+                const apiKey = GEMINI_API_KEY === "YOUR_GEMINI_API_KEY" ? "" : GEMINI_API_KEY; // Use empty string if placeholder
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
                 const response = await fetch(apiUrl, {
@@ -515,7 +510,7 @@
                 }
             } catch (error) {
                 console.error("Error during entity extraction:", error);
-                displayError(`Failed to extract entities for highlighting: ${error.message}. Please ensure your Gemini API key is valid and the Generative Language API is enabled.`);
+                displayError(`Failed to extract entities for highlighting: ${error.message}`);
                 return [];
             }
         }
@@ -560,7 +555,7 @@
                     }
                 };
 
-                const apiKey = GEMINI_API_KEY; // Use the GEMINI_API_KEY directly
+                const apiKey = GEMINI_API_KEY === "YOUR_GEMINI_API_KEY" ? "" : GEMINI_API_KEY;
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
                 const response = await fetch(apiUrl, {
@@ -592,7 +587,7 @@
                 }
             } catch (error) {
                 console.error("Error during explanation generation:", error);
-                displayError(`Failed to get explanation: ${error.message}. Please ensure your Gemini API key is valid and the Generative Language API is enabled.`);
+                displayError(`Failed to get explanation: ${error.message}`);
                 return null;
             }
         }
@@ -611,7 +606,7 @@
 
             // Add unique terms to history, limit to 10
             const uniqueHistory = Array.from(new Set(searchHistory)); // Ensure uniqueness
-            searchHistory = uniqueHistory.slice(0, 10); // Keep only the latest 10
+            searchHistory = uniqueHistory.slice(0, 10); // Limit to 10 most recent unique searches
 
             searchHistory.forEach(term => {
                 const listItem = document.createElement('li');
@@ -630,21 +625,22 @@
 
         /**
          * Analyzes a base64 encoded image to identify a relevant term (object, human, or location) using Gemini Vision API.
-         * Returns a structured object with type and name.
-         * @param {string} base64ImageData The base64 encoded image data.
-         * @returns {Promise<{type: string, name: string}|null>} A promise that resolves to an object with identified type and name, or null.
+         * Prioritizes object, then human, then location.
+         * @param {string} base64ImageData The base64 encoded image data (e.g., "data:image/png;base64,...").
+         * @returns {Promise<string|null>} A promise that resolves to the identified term string or null if not found.
          */
         async function analyzeImageForLocation(base64ImageData) {
-            cameraStatus.textContent = "Analyzing image...";
+            cameraStatus.textContent = "Analyzing image for object, human, or location...";
             loadingIndicator.classList.remove('hidden');
 
-            if (!GEMINI_API_KEY || GEMINI_API_KEY === "") { // Check if API key is empty
+            if (!GEMINI_API_KEY || GEMINI_API_KEY === "" || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY") {
                 cameraStatus.textContent = "Gemini API Key for image analysis is not configured. Cannot analyze image.";
-                displayError("Gemini API Key needed for image analysis. Please ensure it's configured and the Generative Language API is enabled in your Google Cloud Console.");
+                displayError("Gemini API Key needed for image analysis. Please configure it.");
                 loadingIndicator.classList.add('hidden');
                 return null;
             }
 
+            // Extract just the base64 data part, removing the "data:image/png;base64," prefix
             const dataPart = base64ImageData.split(',')[1];
             if (!dataPart) {
                 displayError("Invalid image data provided for analysis.");
@@ -652,22 +648,10 @@
                 return null;
             }
 
-            const prompt = `
-            Analyze this image and identify the most prominent content.
-            Classify it into one of these types: "object", "human", "location", "general_item".
-            Provide the specific name or description of the identified content.
-            If it's an object, try to identify if it's a historical object (e.g., "Statue of Cleopatra", "Ancient Roman Coin").
-            If it's a human, identify the person if recognizable (e.g., "Abraham Lincoln", "Queen Elizabeth II").
-            If it's a location, identify the specific landmark, building, or area (e.g., "Eiffel Tower", "Roman Forum").
-            If it's a general item, provide its name (e.g., "flower", "desk lamp").
-            
-            Respond only with a JSON object in the format:
-            {
-                "type": "object" | "human" | "location" | "general_item",
-                "name": "Identified name or description"
-            }
-            Do not include any other text or markdown outside the JSON object.
-            `;
+            // Modified prompt to prioritize object, then human, then location
+            const prompt = `Analyze this image and identify the most prominent *historic object*, *historic human*, or *geographic location* it represents. 
+                Prioritize identifying a specific historical object first. If no clear object, then identify a prominent human (e.g., 'Queen Elizabeth II'). 
+                If neither, then infer the most likely city, region, or country (e.g., 'Paris, France'). Provide only the identified term and nothing else.`;
 
             try {
                 const payload = {
@@ -678,7 +662,7 @@
                                 { text: prompt },
                                 {
                                     inlineData: {
-                                        mimeType: "image/png",
+                                        mimeType: "image/png", // Assuming PNG from canvas
                                         data: dataPart
                                     }
                                 }
@@ -686,20 +670,11 @@
                         }
                     ],
                     generationConfig: {
-                        temperature: 0.2,
-                        responseMimeType: "application/json",
-                        responseSchema: {
-                            type: "OBJECT",
-                            properties: {
-                                "type": { "type": "STRING", "enum": ["object", "human", "location", "general_item"] },
-                                "name": { "type": "STRING" }
-                            },
-                            required: ["type", "name"]
-                        }
+                        temperature: 0.2, // Keep it focused
                     }
                 };
 
-                const apiKey = GEMINI_API_KEY;
+                const apiKey = GEMINI_API_KEY === "YOUR_GEMINI_API_KEY" ? "" : GEMINI_API_KEY;
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
                 const response = await fetch(apiUrl, {
@@ -719,16 +694,16 @@
                 if (result.candidates && result.candidates.length > 0 &&
                     result.candidates[0].content && result.candidates[0].content.parts &&
                     result.candidates[0].content.parts.length > 0) {
-                    const identifiedData = JSON.parse(result.candidates[0].content.parts[0].text);
-                    cameraStatus.textContent = `Identified: ${identifiedData.name} (${identifiedData.type})`;
-                    return identifiedData;
+                    const identifiedTerm = result.candidates[0].content.parts[0].text.trim();
+                    cameraStatus.textContent = `Identified: ${identifiedTerm}`;
+                    return identifiedTerm;
                 } else {
-                    cameraStatus.textContent = "Could not identify content from the image.";
+                    cameraStatus.textContent = "No clear object, human, or location identified from image. Please try again or enter manually.";
                     return null;
                 }
             } catch (error) {
                 console.error("Error during image analysis:", error);
-                displayError(`Failed to analyze image: ${error.message}. Please ensure your Gemini API key is valid and the Generative Language API is enabled in your Google Cloud Console.`);
+                displayError(`Failed to analyze image for object/human/location: ${error.message}`);
                 loadingIndicator.classList.add('hidden');
                 return null;
             }
@@ -738,19 +713,19 @@
         // Event listener for form submission (existing logic, now potentially called by camera)
         postcodeForm.addEventListener('submit', async (event) => {
             event.preventDefault();
-            const inputArtifact = postcodeValue.value.trim(); // This will be the location from text input OR from camera
+            const postcode = postcodeValue.value.trim(); // This will be the location from text input OR from camera
 
             // Add current search term to history (if not empty and not already the first item)
-            if (inputArtifact && (searchHistory.length === 0 || searchHistory[0] !== inputArtifact)) {
-                searchHistory.unshift(inputArtifact); // Add to the beginning
+            if (postcode && (searchHistory.length === 0 || searchHistory[0] !== postcode)) {
+                searchHistory.unshift(postcode); // Add to the beginning
                 searchHistory = searchHistory.slice(0, 10); // Keep only the latest 10
                 updateSearchHistoryPanel();
             }
 
             // Input validation and API key checks
-            if (!inputArtifact) { displayError("Please enter an artifact."); return; }
-            if (!MAPS_API_KEY || MAPS_API_KEY === "") { console.warn("Google Maps API Key is not configured. Geocoding will be skipped."); /* Continue without geocoding if key is missing */ }
-            if (!textModel || GEMINI_API_KEY === "") { displayError("Gemini API Key for text generation is not configured or SDK couldn't initialize. Please ensure it's configured and the Generative Language API is enabled."); return; }
+            if (!postcode) { displayError("Please enter an artifact."); return; }
+            if (!MAPS_API_KEY || MAPS_API_KEY === "" || MAPS_API_KEY === "YOUR_MAPS_API_KEY") { displayError("Google Maps API Key is not configured. Geocoding will be skipped."); /* Continue without geocoding if key is missing */ }
+            if (!textModel && (GEMINI_API_KEY === "" || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY")) { displayError("Gemini API Key for text generation is not configured and SDK couldn't initialize."); return; }
 
             // Clear global status messages and show loading indicator
             geocodingStatus.textContent = ''; geocodingStatus.classList.add('hidden');
@@ -758,118 +733,57 @@
             errorMessage.classList.add('hidden'); errorMessage.textContent = '';
             loadingIndicator.classList.remove('hidden');
 
-            let determinedArtifactName = inputArtifact;
-            let determinedArtifactType = "text_input"; // Default type for manual input
-
-            // Check if the event has custom detail (meaning it came from image analysis)
-            if (event.detail && event.detail.identifiedType) {
-                determinedArtifactType = event.detail.identifiedType;
-            }
+            let determinedLocation = postcode; // Default to raw postcode if geocoding fails or skipped
 
             try {
-                // --- Step 1: Geocode Postcode (if API key is available AND it's likely a location) ---
-                let geocodedAddress = null;
-                // Only attempt geocoding if the identified type is 'location' or 'general_item' (where location context might be needed)
-                // or if it's a generic text input.
-                if ((determinedArtifactType === "location" || determinedArtifactType === "general_item" || determinedArtifactType === "text_input") &&
-                    MAPS_API_KEY && MAPS_API_KEY !== "") {
-                    
-                    geocodingStatus.textContent = `Attempting to pinpoint for: ${inputArtifact}...`;
+                // --- Step 1: Geocode Postcode (if API key is available) ---
+                if (MAPS_API_KEY && MAPS_API_KEY !== "" && MAPS_API_KEY !== "YOUR_MAPS_API_KEY") {
+                    geocodingStatus.textContent = `Attempting to pinpoint for: ${postcode}...`;
                     geocodingStatus.classList.remove('hidden');
-                    const geocodingUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(inputArtifact)}&key=${MAPS_API_KEY}`;
+                    const geocodingUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(postcode)}&key=${MAPS_API_KEY}`;
                     const mapsResponse = await fetch(geocodingUrl);
                     const mapsData = await mapsResponse.json();
 
                     if (mapsData.status === "OK" && mapsData.results && mapsData.results.length > 0) {
-                        geocodedAddress = mapsData.results[0].formatted_address;
-                        geocodingStatus.textContent = `Information revealed: ${geocodedAddress}`;
-                        determinedArtifactName = geocodedAddress; // Use formatted address if successful
-                        determinedArtifactType = "location"; // Confirm type as location
+                        determinedLocation = mapsData.results[0].formatted_address;
+                        geocodingStatus.textContent = `Information revealed: ${determinedLocation}`;
                     } else {
-                        geocodingStatus.textContent = `Could not pinpoint exact location for "${inputArtifact}". Using original term.`;
-                        // determinedArtifactName remains inputArtifact, type remains as initially determined or default
+                        // If geocoding fails, determinedLocation remains the original postcode.
+                        // The status message is now handled by the general "Weaving a tale" message below.
                     }
                 } else {
-                    geocodingStatus.textContent = `Skipping geocoding for "${inputArtifact}" (type: ${determinedArtifactType} or Maps API key missing).`;
+                    // If Maps API key is missing, determinedLocation remains the original postcode.
+                    // The status message is now handled by the general "Weaving a tale" message below.
                 }
 
                 // --- Step 2: Generate Historical Story (Text) ---
-                if (!textModel) {
+                if (!textModel) { // Check if textModel initialized (relevant if GEMINI_API_KEY was initially empty)
                     displayError("Gemini text model not available. Cannot weave a story.");
                     loadingIndicator.classList.add('hidden');
                     return;
                 }
+                // Only append to geocodingStatus if it's not hidden (i.e., if geocoding was attempted)
                 if (!geocodingStatus.classList.contains('hidden')) {
                     geocodingStatus.textContent += ` | Weaving a tale...`; 
                 } else {
-                    geocodingStatus.textContent = `Weaving a tale for: ${determinedArtifactName}...`;
+                    // If geocoding was skipped/failed silently, show a general weaving message
+                    geocodingStatus.textContent = `Weaving a tale for: ${determinedLocation}...`;
                     geocodingStatus.classList.remove('hidden');
                 }
                 
-                let storyPrompt = `You are a historian and storyteller. A user has provided an artifact, identified as: "${determinedArtifactName}".`;
+                const storyPrompt = `
+                You are a historian and storyteller.
+                A user has provided an artifact, identified as: "${determinedLocation}" (derived from the original input "${postcode}").
 
-                // Tailor prompt based on identified type
-                switch (determinedArtifactType) {
-                    case "object":
-                        storyPrompt += `
-                        Please provide a detailed historical story specifically about this object. Focus on:
-                        - What is this object?
-                        - When did it appear or become significant?
-                        - Where is its origin or primary association?
-                        - Who was involved with its creation, use, or discovery?
-                        - Why is it historically important or significant?
-                        - How did it come to be, or how did it impact history?
-                        Do NOT provide a story about a human or location if the object is clearly the focus.
-                        `;
-                        break;
-                    case "human":
-                        storyPrompt += `
-                        Please provide a detailed historical story about this human. Focus on:
-                        - Who is this human?
-                        - When did they live or were they prominent?
-                        - Where did they live and carry out their significant actions?
-                        - Why are they historically popular or important?
-                        - How did their life or actions impact history?
-                        `;
-                        break;
-                    case "location":
-                        storyPrompt += `
-                        Please provide a detailed historical story about this location. Focus on:
-                        - What is this location (e.g., building, city, natural area)?
-                        - Where is it located?
-                        - When were key historical events associated with it?
-                        - Who were the significant figures or groups connected to it?
-                        - Why is it historically important or significant?
-                        - How did it evolve or how did events there impact history?
-                        `;
-                        break;
-                    case "general_item":
-                        storyPrompt += `
-                        This appears to be a general item. Please research and provide a historical story about a significant location or cultural context related to this item. Focus on:
-                        - What is the item and its general purpose?
-                        - Where is it historically significant, commonly found, or symbolically important?
-                        - When did this association become prominent?
-                        - Who might be associated with its cultural significance or production?
-                        - Why is this item or its associated location historically or culturally relevant?
-                        - How did this item become connected to its associated location or culture?
-                        `;
-                        break;
-                    case "text_input": // Fallback for direct text input if not geocoded
-                    default:
-                        storyPrompt += `
-                        Please find relevant historical information, notable events, figures, or developments related to "${determinedArtifactName}".
-                        Write an interesting and concise historical story about it.
-                        `;
-                        break;
-                }
-
-                storyPrompt += `
-                The story must be in Markdown format and include a suitable title.
-                Do not include any "Image Suggestion:" line at the end of your response.
-                Keep the context as a story on the book, good reading.
-                Format the text as the book content, beware to remove all \` (backward) symbols on the context and word 'markdown' next to it
-                If you cannot find specific historical information for "${determinedArtifactName}", try to find information for the broader context (e.g., town/city or region it belongs to), clearly stating this in the story. If no relevant historical information can be reasonably found, respond with a polite message in Markdown, stating that the app cannot process and collect a historical story about it.
-                `;
+                Your tasks are:
+                1.  Based on this determined artifact ("${determinedLocation}"), find relevant historical information, notable events, figures, or developments.
+                2.  Write an interesting and concise historical story about this artifact.
+                3.  The story must be in Markdown format and include a suitable title.
+                4.  Do not include any "Image Suggestion:" line at the end of your response.
+                5.  Keep the context as a story on the book, good reading, without explicitly using "What?", "Where?", "When?", "Who?", "Why?", and "How?" as section headers or direct questions within the narrative. Instead, weave the answers to these questions naturally into the story's flow.
+                6.  Format the text as the book content, beware to remove all \` (backward) symbols on the context and word 'markdown' next to it
+                If you cannot find specific historical information for "${determinedLocation}", try to find information for the broader context (e.g., town/city or region it belongs to), clearly stating this in the story. If no relevant historical information can be reasonably found, respond with a polite message in Markdown.
+                                `;
 
                 const storyResult = await textModel.generateContent(storyPrompt);
                 const storyResponse = await storyResult.response;
@@ -883,7 +797,7 @@
                 
                 // --- Step 4: Generate Image based on Story ---
                 let imageUrl = `https://placehold.co/600x400/E07A5F/FFFFFF?text=${encodeURIComponent("Image generation failed")}&font=lora`; // Default placeholder
-                if (GEMINI_API_KEY === "" ) { // Check if GEMINI_API_KEY is empty/default for image generation
+                if (GEMINI_API_KEY === "" || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY") { // Check if GEMINI_API_KEY is empty/default for image generation
                     imageGenStatus.textContent = "Gemini API Key needed for visual echoes. Skipping image generation.";
                     imageGenStatus.classList.remove('hidden');
                     console.warn("GEMINI_API_KEY is empty or default, skipping image generation.");
@@ -941,7 +855,7 @@
                     termsFlexContainer.classList.add('flex', 'flex-wrap', 'gap-2');
                     entitiesToHighlight.forEach(term => {
                         const termButton = document.createElement('button');
-                        termButton.classList.add('highlighted-term-button');
+                        termButton.classList.add('highlighted-term-button', 'bg-sky-700/20', 'text-sky-300', 'hover:bg-sky-600/40', 'px-3', 'py-1', 'rounded-full', 'text-sm', 'font-medium', 'transition-colors');
                         termButton.textContent = term;
                         termButton.setAttribute('data-term', term);
                         termButton.addEventListener('click', () => {
@@ -953,7 +867,7 @@
                     exploreFurtherDiv.appendChild(termsFlexContainer);
                 } else {
                     const noTerms = document.createElement('p');
-                    noTerms.classList.add('text-sm', 'text-slate-400');
+                    noTerms.classList.add('text-slate-400', 'text-sm');
                     noTerms.textContent = 'No specific terms identified for further exploration.';
                     exploreFurtherDiv.appendChild(noTerms);
                 }
@@ -961,7 +875,7 @@
                 // --- Step 6: Play TTS Audio for the new story ---
                 await synthesizeAndPlayAudio(currentTextStory, audioPlayer, ttsStatus); // Use direct audioPlayer and ttsStatus
 
-                geocodingStatus.textContent = `Information revealed for: ${determinedArtifactName} | Story unveiled.`;
+                geocodingStatus.textContent = `Information revealed: ${determinedLocation} | Story unveiled.`;
 
             } catch (error) {
                 console.error("Error during processing:", error);
@@ -974,6 +888,7 @@
         });
 
         // Audio player event listeners for status updates (for TTS audio)
+        // These now directly target the single audioPlayer and ttsStatus elements
         audioPlayer.onended = () => {
             ttsStatus.textContent = "Audio echo finished.";
         };
@@ -995,6 +910,7 @@
             const selectedText = selection.toString().trim();
 
             if (selectedText.length > 2 && selectedText.length < 100 && storyOutput.contains(selection.anchorNode)) {
+                // Only process if text is selected within the storyOutput and is a reasonable length
                 showExplanationModal('Loading...', '', 'Fetching explanation...');
                 const explanationData = await getExplanationForSelectedText(selectedText, currentTextStory);
                 if (explanationData) {
@@ -1012,10 +928,12 @@
 
         // Add touch event listener for mobile selection
         storyOutput.addEventListener('touchend', async (event) => {
+            // Prevent default touch behavior that might interfere with selection
             event.preventDefault(); 
             const selection = window.getSelection();
             const selectedText = selection.toString().trim();
 
+            // Check if text is selected and it's within the storyOutput element
             if (selectedText.length > 2 && selectedText.length < 100 && storyOutput.contains(selection.anchorNode)) {
                 showExplanationModal('Loading...', '', 'Fetching explanation...');
                 const explanationData = await getExplanationForSelectedText(selectedText, currentTextStory);
@@ -1038,7 +956,7 @@
             if (type) explanationType.textContent = type;
             if (content) explanationContent.textContent = content;
             explanationModal.classList.remove('hidden');
-            explanationModal.classList.add('flex');
+            explanationModal.classList.add('flex'); // Use flex to center
         }
 
         function hideExplanationModal() {
@@ -1062,6 +980,7 @@
             cameraStatus.textContent = "Requesting camera access...";
             cameraStatus.classList.remove('hidden');
             try {
+                // Attempt to get the 'environment' (back) camera first
                 currentStream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: { exact: "environment" }
@@ -1069,16 +988,17 @@
                 });
                 cameraFeed.srcObject = currentStream;
                 cameraFeedContainer.classList.remove('hidden');
-                cameraFeedContainer.classList.add('flex');
+                cameraFeedContainer.classList.add('flex'); // Show as flex
                 openCameraButton.classList.add('hidden');
                 cameraStatus.textContent = "Camera active. Capture your moment!";
             } catch (err) {
                 console.warn("Failed to access environment camera, trying user camera:", err);
+                // Fallback to 'user' (front) camera if 'environment' fails
                 try {
                     currentStream = await navigator.mediaDevices.getUserMedia({ video: true });
                     cameraFeed.srcObject = currentStream;
                     cameraFeedContainer.classList.remove('hidden');
-                    cameraFeedContainer.classList.add('flex');
+                    cameraFeedContainer.classList.add('flex'); // Show as flex
                     openCameraButton.classList.add('hidden');
                     cameraStatus.textContent = "Camera active (front camera). Capture your moment!";
                 } catch (fallbackErr) {
@@ -1097,12 +1017,16 @@
 
             cameraStatus.textContent = "Capturing photo...";
             const context = cameraCanvas.getContext('2d');
+            // Set canvas dimensions to match video feed
             cameraCanvas.width = cameraFeed.videoWidth;
             cameraCanvas.height = cameraFeed.videoHeight;
+            // Draw the current video frame onto the canvas
             context.drawImage(cameraFeed, 0, 0, cameraCanvas.width, cameraCanvas.height);
 
+            // Get the image data as a Base64 encoded PNG
             const imageDataUrl = cameraCanvas.toDataURL('image/png');
 
+            // Stop the camera stream
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
                 cameraFeed.srcObject = null;
@@ -1112,22 +1036,14 @@
             cameraFeedContainer.classList.remove('flex');
             openCameraButton.classList.remove('hidden');
 
-            // Analyze the captured image for type and name
-            const identifiedData = await analyzeImageForLocation(imageDataUrl);
+            // Analyze the captured image for location
+            const identifiedLocation = await analyzeImageForLocation(imageDataUrl);
 
-            if (identifiedData && identifiedData.name) {
-                // Set the input field with the identified name
-                postcodeValue.value = identifiedData.name;
-                // Now, trigger the form submission, passing the identified type as a custom event detail
-                const customEvent = new CustomEvent('submit', {
-                    cancelable: true,
-                    bubbles: true,
-                    detail: { identifiedType: identifiedData.type }
-                });
-                postcodeForm.dispatchEvent(customEvent);
+            if (identifiedLocation) {
+                postcodeValue.value = identifiedLocation; // Set the input field with identified location
+                postcodeForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })); // Trigger story generation
             } else {
-                cameraStatus.textContent = "Could not identify a clear object, human, or location from the image. Please try again or enter manually.";
-                displayError("Image analysis failed to identify a clear artifact. Please try again or enter manually.");
+                cameraStatus.textContent = "No clear object, human, or location identified from image. Please try again or enter manually.";
             }
         });
 
@@ -1143,6 +1059,8 @@
             cameraStatus.textContent = "";
         });
 
+
+        // Initial update of search history panel on page load
         document.addEventListener('DOMContentLoaded', () => {
             updateSearchHistoryPanel();
             document.getElementById('currentYear').textContent = new Date().getFullYear();
