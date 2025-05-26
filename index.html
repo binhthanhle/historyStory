@@ -6,6 +6,233 @@
     <title>Echoes</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Apply Inter font globally */
+        body { font-family: 'Inter', sans-serif; }
+
+        /* Custom styles for Markdown rendered content within the story output */
+        /* These styles enhance readability and visual hierarchy for generated stories */
+        .prose h1 { font-size: 1.875rem; font-weight: bold; margin-top: 1.5rem; margin-bottom: 0.75rem; color: #60A5FA; /* Sky-400 equivalent */ }
+        .prose h2 { font-size: 1.5rem; font-weight: bold; margin-top: 1.25rem; margin-bottom: 0.6rem; color: #93C5FD; /* Sky-300 equivalent */ }
+        .prose h3 { font-size: 1.25rem; font-weight: bold; margin-top: 1rem; margin-bottom: 0.5rem; color: #BFDBFE; /* Sky-200 equivalent */ }
+        .prose p { margin-bottom: 1rem; line-height: 1.75; } /* Increased line-height for better readability */
+        .prose strong { font-weight: bold; color: #E0F2FE; /* Lighter sky for emphasis */ }
+        .prose em { font-style: italic; color: #BEE3F8; /* Even lighter sky for subtle emphasis */ }
+        .prose ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 1rem; padding-left: 1rem;}
+        .prose li { margin-bottom: 0.5rem; } /* Increased spacing for list items */
+        
+        /* Ensure audio player and image container maintain good spacing and appearance */
+        #audioPlayer { margin-top: 1rem; width: 100%; border-radius: 0.5rem; background-color: #334155; }
+        #imageContainer img { display: block; } /* Ensures image is a block element */
+
+        /* Styles for the clickable "Explore Further" buttons at the bottom of the story */
+        .highlighted-term-button {
+            /* Tailwind classes applied directly for consistency */
+            @apply bg-sky-700/20 text-sky-300 hover:bg-sky-600/40 px-3 py-1 rounded-full text-sm font-medium transition-colors duration-300 ease-in-out;
+            white-space: nowrap; /* Prevent wrapping for single terms */
+        }
+
+        /* Main layout container for panels - uses flexbox for responsive side-by-side or stacked layout */
+        #main-content-container {
+            display: flex;
+            flex-direction: column; /* Default to stacking on small screens */
+            gap: 1.5rem; /* Space between left and right panels */
+            width: 100%;
+            max-width: 80rem; /* Increased max-width for more content space on large screens */
+            margin: 0 auto; /* Center the container */
+        }
+
+        /* Left Panel: Search History */
+        #searchHistoryPanel {
+            flex: 0 0 auto; /* Don't grow, don't shrink */
+            width: 100%; /* Full width on small screens */
+            background-color: #1e293b; /* Slate-800 equivalent */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-2xl */
+            border-radius: 0.75rem; /* rounded-xl */
+            padding: 1.5rem;
+            align-self: flex-start; /* Align to top */
+            max-height: 90vh; /* Limit height for scrolling */
+            overflow-y: auto; /* Enable scrolling for history list */
+        }
+        #searchHistoryPanel ul {
+            list-style: none;
+            padding: 0;
+        }
+        #searchHistoryPanel button {
+            text-align: left;
+        }
+
+        /* Right Panel: Form and Story Display (now combined) */
+        #right-content-area {
+            flex: 1; /* Take remaining space */
+            display: flex;
+            flex-direction: column;
+            background-color: #1e293b; /* Slate-800 equivalent */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-2xl */
+            border-radius: 0.75rem; /* rounded-xl */
+            padding: 1.5rem;
+        }
+
+        /* Modal Styles for explanations */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000; /* Ensure it's on top of other content */
+        }
+
+        .modal-content {
+            background-color: #1e293b; /* Slate-800 */
+            padding: 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            max-width: 500px;
+            width: 90%; /* Responsive width */
+            color: #E2E8F0; /* Slate-200 */
+            position: relative;
+            animation: fadeInScale 0.3s ease-out forwards; /* Add simple animation */
+        }
+
+        /* Keyframe animation for modal */
+        @keyframes fadeInScale {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .modal-close-btn {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: #94A3B8; /* Slate-400 */
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .modal-close-btn:hover {
+            color: #CBD5E1; /* Slate-300 */
+        }
+
+        /* Responsive adjustments for larger screens */
+        @media (min-width: 768px) { /* md breakpoint */
+            #main-content-container {
+                flex-direction: row; /* Side-by-side on larger screens */
+            }
+            #searchHistoryPanel {
+                width: 25%; /* Left panel takes 1/4th width */
+            }
+            #right-content-area {
+                width: 75%; /* Right panel takes 3/4th width */
+            }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 to-slate-800 text-slate-100 min-h-screen flex flex-col items-center justify-center p-4 selection:bg-sky-500 selection:text-white">
+
+    <audio autoplay loop style="display:none;">
+      <source src="LandingPageMusic.mp3" type="audio/mp3">
+    </audio>
+
+    <div id="main-content-container" class="container mx-auto">
+        <aside id="searchHistoryPanel" class="hidden md:block">
+            <h2 class="text-2xl font-bold text-sky-400 mb-4 text-center">Search History</h2>
+            <ul id="historyList" class="w-full space-y-2"></ul>
+        </aside>
+
+        <main id="right-content-area">
+            <header class="text-center mb-8">
+                <h1 class="text-4xl font-bold text-sky-400">Echoes</h1>
+                <p class="text-slate-400 mt-2">Uncover the whispers of the past. Enter a name, object, or place to hear its historical echoes and glimpse its story.</p>
+            </header>
+
+            <form id="postcodeForm" class="space-y-6 mb-8">
+                <div>
+                    <label for="postcode" class="block text-sm font-medium text-sky-300 mb-1">Artifact (e.g., Name, Postcode, City, Landmark)</label>
+                    <input type="text" name="postcode" id="postcode" required
+                            class="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all"
+                            placeholder="e.g., London, Eiffel Tower, D04 E5W5">
+                </div>
+                <button type="submit"
+                        class="w-full bg-sky-600 hover:bg-sky-500 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:shadow-lg transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-opacity-50">
+                Unveil the Past
+                </button>
+            </form>
+
+            <section class="mt-8 p-6 bg-slate-700 rounded-xl shadow-lg">
+                <h2 class="text-2xl font-bold text-sky-400 mb-4 text-center">Capture a Moment</h2>
+                <div class="flex justify-center mb-4">
+                    <button id="openCameraButton" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
+                        Open Camera
+                    </button>
+                </div>
+
+                <div id="cameraFeedContainer" class="hidden flex-col items-center">
+                    <video id="cameraFeed" class="w-full max-w-md rounded-lg border border-slate-600 shadow-md" autoplay></video>
+                    <canvas id="cameraCanvas" class="hidden"></canvas>
+                    <button id="capturePhotoButton" class="mt-4 bg-green-600 hover:bg-green-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
+                        Capture Photo
+                    </button>
+                    <button id="closeCameraButton" class="mt-2 bg-red-600 hover:bg-red-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50">
+                        Close Camera
+                    </button>
+                    <p id="cameraStatus" class="mt-2 text-sm text-sky-300 text-center"></p>
+                </div>
+            </section>
+
+            <div id="loadingIndicator" class="mt-8 text-center hidden">
+                <div class="inline-flex items-center">
+                    <svg class="animate-spin -ml-1 mr-3 h-6 w-6 text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span class="text-slate-300">Summoning history...</span>
+                </div>
+            </div>
+            
+            <p id="geocodingStatus" class="mt-4 text-sm text-sky-300 text-center hidden"></p>
+            <p id="imageGenStatus" class="mt-2 text-sm text-sky-300 text-center hidden"></p>
+
+            <div id="errorMessage" class="mt-6 bg-red-700/30 border border-red-600 text-red-300 px-4 py-3 rounded-lg hidden" role="alert">
+            </div>
+            
+            <section id="storyDisplayArea" class="bg-slate-700 shadow-lg rounded-xl p-6 flex flex-col space-y-4 mt-8 overflow-y-auto max-h-[80vh]">
+                <article id="storyOutput" class="prose prose-invert max-w-none text-slate-200"></article>
+                <div id="imageContainer" class="text-center"></div>
+                <div class="text-center mt-4">
+                    <p id="ttsStatus" class="text-sm text-slate-400 mt-2 hidden"></p>
+                    <audio id="audioPlayer" controls class="mt-3 w-full rounded-md bg-slate-600"></audio>
+                </div>
+                <div id="exploreFurtherButtons" class="mt-6 pt-4 border-t border-slate-600">
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <footer class="text-center text-slate-500 mt-12 text-sm w-full">
+        <p>&copy; <span id="currentYear"></span> Echoes. Powered by Gemini, Google Maps & Google Cloud TTS.</p>
+    </footer>
+
+    <div id="explanationModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <button id="explanationCloseBtn" class="modal-close-btn">&times;</button>
+            <h3 class="text-xl font-bold text-sky-400 mb-2"><span id="explanationTerm"></span> <span id="explanationType" class="text-sm text-slate-400 font-normal"></span></h3>
+            <p id="explanationContent" class="text-slate-200"></p>
+        </div>
+    </div>
+
     <script type="module">
         // IMPORTANT: ESM (ECMAScript Module) for Gemini SDK (for text generation)
         import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
@@ -397,12 +624,13 @@
         }
 
         /**
-         * Analyzes a base64 encoded image to identify a relevant location using Gemini Vision API.
+         * Analyzes a base64 encoded image to identify a relevant term (object, human, or location) using Gemini Vision API.
+         * Prioritizes object, then human, then location.
          * @param {string} base64ImageData The base64 encoded image data (e.g., "data:image/png;base64,...").
-         * @returns {Promise<string|null>} A promise that resolves to the identified location string or null if not found.
+         * @returns {Promise<string|null>} A promise that resolves to the identified term string or null if not found.
          */
         async function analyzeImageForLocation(base64ImageData) {
-            cameraStatus.textContent = "Analyzing image for location...";
+            cameraStatus.textContent = "Analyzing image for object, human, or location...";
             loadingIndicator.classList.remove('hidden');
 
             if (!GEMINI_API_KEY || GEMINI_API_KEY === "" || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY") {
@@ -420,8 +648,8 @@
                 return null;
             }
 
-            // Modified prompt for deeper location inference
-            const prompt = "Analyze this image and identify the name of human, object, or most probable geographic location, or region it represents. Consider any landmarks, natural features, animals, objects, cultural elements, or contextual clues present in the image. If a specific object name is figure out, name it. If a specific landmark is visible, name it.  If not, infer the most likely city, region, or country. Provide only the inferred location name (e.g., 'Eiffel Tower, Paris', 'Sichuan Province, China', 'Amazon Rainforest') and nothing else.";
+            // Modified prompt to prioritize object, then human, then location
+            const prompt = "Analyze this image and identify the most prominent *object*, *human*, or *geographic location* it represents. Prioritize identifying a specific object first. If no clear object, then identify a prominent human (e.g., 'Queen Elizabeth II'). If neither, then infer the most likely city, region, or country (e.g., 'Paris, France'). Provide only the identified term and nothing else.";
 
             try {
                 const payload = {
@@ -464,16 +692,16 @@
                 if (result.candidates && result.candidates.length > 0 &&
                     result.candidates[0].content && result.candidates[0].content.parts &&
                     result.candidates[0].content.parts.length > 0) {
-                    const identifiedLocation = result.candidates[0].content.parts[0].text.trim();
-                    cameraStatus.textContent = `Location identified: ${identifiedLocation}`;
-                    return identifiedLocation;
+                    const identifiedTerm = result.candidates[0].content.parts[0].text.trim();
+                    cameraStatus.textContent = `Identified: ${identifiedTerm}`;
+                    return identifiedTerm;
                 } else {
-                    cameraStatus.textContent = "Could not identify a specific location from the image.";
+                    cameraStatus.textContent = "Could not identify a specific object, human, or location from the image.";
                     return null;
                 }
             } catch (error) {
                 console.error("Error during image analysis:", error);
-                displayError(`Failed to analyze image for location: ${error.message}`);
+                displayError(`Failed to analyze image for object/human/location: ${error.message}`);
                 loadingIndicator.classList.add('hidden');
                 return null;
             }
@@ -493,7 +721,7 @@
             }
 
             // Input validation and API key checks
-            if (!postcode) { displayError("Please enter a postcode or location."); return; }
+            if (!postcode) { displayError("Please enter an artifact."); return; }
             if (!MAPS_API_KEY || MAPS_API_KEY === "" || MAPS_API_KEY === "YOUR_MAPS_API_KEY") { displayError("Google Maps API Key is not configured. Geocoding will be skipped."); /* Continue without geocoding if key is missing */ }
             if (!textModel && (GEMINI_API_KEY === "" || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY")) { displayError("Gemini API Key for text generation is not configured and SDK couldn't initialize."); return; }
 
@@ -508,7 +736,7 @@
             try {
                 // --- Step 1: Geocode Postcode (if API key is available) ---
                 if (MAPS_API_KEY && MAPS_API_KEY !== "" && MAPS_API_KEY !== "YOUR_MAPS_API_KEY") {
-                    geocodingStatus.textContent = `Unearthing location for: ${postcode}...`;
+                    geocodingStatus.textContent = `Attempting to pinpoint location for: ${postcode}...`;
                     geocodingStatus.classList.remove('hidden');
                     const geocodingUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(postcode)}&key=${MAPS_API_KEY}`;
                     const mapsResponse = await fetch(geocodingUrl);
@@ -516,13 +744,16 @@
 
                     if (mapsData.status === "OK" && mapsData.results && mapsData.results.length > 0) {
                         determinedLocation = mapsData.results[0].formatted_address;
-                        geocodingStatus.textContent = `Location revealed: ${determinedLocation}`;
+                        geocodingStatus.textContent = `Information revealed: ${determinedLocation}`;
                     } else {
-                        geocodingStatus.textContent = `Could not pinpoint exact location. Using "${postcode}" directly. Status: ${mapsData.status}`;
+                        // Removed: geocodingStatus.textContent = `Could not pinpoint exact location. Using "${postcode}" directly. Status: ${mapsData.status}`;
+                        // Instead, we will let the overall status message handle it or keep it silent.
+                        // determinedLocation remains 'postcode' as fallback.
                     }
                 } else {
-                    geocodingStatus.textContent = `Using "${postcode}" directly (Maps API key missing/default).`;
-                    geocodingStatus.classList.remove('hidden');
+                    // Removed: geocodingStatus.textContent = `Using "${postcode}" directly (Maps API key missing/default).`;
+                    // Instead, we will let the displayError for missing API key handle it.
+                    // determinedLocation remains 'postcode'.
                 }
 
                 // --- Step 2: Generate Historical Story (Text) ---
@@ -531,7 +762,15 @@
                     loadingIndicator.classList.add('hidden');
                     return;
                 }
-                geocodingStatus.textContent += ` | Weaving a tale...`; // Append to geocoding status
+                // Only append to geocodingStatus if it's not hidden (i.e., if geocoding was attempted)
+                if (!geocodingStatus.classList.contains('hidden')) {
+                    geocodingStatus.textContent += ` | Weaving a tale...`; 
+                } else {
+                    // If geocoding was skipped/failed silently, show a general weaving message
+                    geocodingStatus.textContent = `Weaving a tale for: ${determinedLocation}...`;
+                    geocodingStatus.classList.remove('hidden');
+                }
+                
                 const storyPrompt = `
                 You are a historian and storyteller.
                 A user has provided a object name, human name, or location, identified as: "${determinedLocation}" (derived from the original input "${postcode}").
@@ -780,7 +1019,7 @@
                 postcodeValue.value = identifiedLocation; // Set the input field with identified location
                 postcodeForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })); // Trigger story generation
             } else {
-                cameraStatus.textContent = "No clear location identified from image. Please try again or enter manually.";
+                cameraStatus.textContent = "No clear object, human, or location identified from image. Please try again or enter manually.";
             }
         });
 
@@ -800,220 +1039,9 @@
         // Initial update of search history panel on page load
         document.addEventListener('DOMContentLoaded', () => {
             updateSearchHistoryPanel();
+            document.getElementById('currentYear').textContent = new Date().getFullYear();
         });
 
-    </script>
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-        /* Custom styles for Markdown rendered content */
-        .prose h1 { font-size: 1.875rem; font-weight: bold; margin-top: 1rem; margin-bottom: 0.5rem; color: #60A5FA; /* Sky-400 equivalent */ }
-        .prose h2 { font-size: 1.5rem; font-weight: bold; margin-top: 0.875rem; margin-bottom: 0.4rem; color: #93C5FD; /* Sky-300 equivalent */ }
-        .prose h3 { font-size: 1.25rem; font-weight: bold; margin-top: 0.75rem; margin-bottom: 0.3rem; color: #BFDBFE; /* Sky-200 equivalent */ }
-        .prose p { margin-bottom: 1rem; line-height: 1.6; }
-        .prose strong { font-weight: bold; }
-        .prose em { font-style: italic; }
-        .prose ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 1rem; padding-left: 1rem;}
-        .prose li { margin-bottom: 0.25rem; }
-        
-        /* Direct audio player and image container styles */
-        #audioPlayer { margin-top: 0.5rem; width: 100%; border-radius: 0.375rem; background-color: #334155; }
-        #imageContainer img { display: block; }
-
-        /* Styles for the clickable buttons at the bottom of the story */
-        .highlighted-term-button {
-            @apply bg-sky-700/20 text-sky-300 hover:bg-sky-600/40 px-3 py-1 rounded-full text-sm font-medium transition-colors;
-            white-space: nowrap; /* Prevent wrapping for single terms */
-        }
-
-        /* Main layout container for panels */
-        #main-content-container {
-            display: flex;
-            flex-direction: column; /* Stack on small screens */
-            gap: 1.5rem; /* Space between left and right panels */
-            width: 100%;
-            max-width: 60rem; /* Adjusted max-width back for single story panel */
-        }
-
-        /* Left Panel: Search History */
-        #searchHistoryPanel {
-            flex: 0 0 auto; /* Don't grow, don't shrink */
-            width: 100%; /* Full width on small screens */
-            background-color: #1e293b; /* Slate-800 equivalent */
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-2xl */
-            border-radius: 0.75rem; /* rounded-xl */
-            padding: 1.5rem;
-            align-self: flex-start; /* Align to top */
-            max-height: 90vh; /* Limit height for scrolling */
-            overflow-y: auto; /* Enable scrolling for history list */
-        }
-        #searchHistoryPanel ul {
-            list-style: none;
-            padding: 0;
-        }
-        #searchHistoryPanel button {
-            text-align: left;
-        }
-
-        /* Right Panel: Form and Story Display (now combined) */
-        #right-content-area {
-            flex: 1; /* Take remaining space */
-            display: flex;
-            flex-direction: column;
-            background-color: #1e293b; /* Slate-800 equivalent */
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-2xl */
-            border-radius: 0.75rem; /* rounded-xl */
-            padding: 1.5rem;
-        }
-
-        /* Modal Styles */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.7);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000; /* Ensure it's on top */
-        }
-
-        .modal-content {
-            background-color: #1e293b; /* Slate-800 */
-            padding: 2rem;
-            border-radius: 0.75rem;
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
-            max-width: 500px;
-            width: 90%;
-            color: #E2E8F0; /* Slate-200 */
-            position: relative;
-        }
-
-        .modal-close-btn {
-            position: absolute;
-            top: 0.75rem;
-            right: 0.75rem;
-            background: none;
-            border: none;
-            font-size: 1.5rem;
-            color: #94A3B8; /* Slate-400 */
-            cursor: pointer;
-            transition: color 0.2s;
-        }
-        .modal-close-btn:hover {
-            color: #CBD5E1; /* Slate-300 */
-        }
-
-        /* Responsive adjustments for larger screens */
-        @media (min-width: 768px) { /* md breakpoint */
-            #main-content-container {
-                flex-direction: row; /* Side-by-side on larger screens */
-            }
-            #searchHistoryPanel {
-                width: 25%; /* Left panel takes 1/4th width */
-            }
-            #right-content-area {
-                width: 75%; /* Right panel takes 3/4th width */
-            }
-        }
-    </style>
-</head>
-<body class="bg-gradient-to-br from-slate-900 to-slate-800 text-slate-100 min-h-screen flex flex-col items-center justify-center p-4 selection:bg-sky-500 selection:text-white">
-
-    <audio autoplay loop style="display:none;">
-      <source src="LandingPageMusic.mp3" type="audio/mp3">
-    </audio>
-
-    <div id="main-content-container">
-        <div id="searchHistoryPanel" class="hidden md:block">
-            </div>
-
-        <div id="right-content-area">
-            <header class="text-center mb-8">
-                <h1 class="text-4xl font-bold text-sky-400">Echoes</h1>
-                <p class="text-slate-400 mt-2">Uncover the whispers of the past. Enter a name, object, or place to hear its historical echoes and glimpse its story.</p>
-            </header>
-
-            <form id="postcodeForm" class="space-y-6 mb-8">
-                <div>
-                    <label for="postcode" class="block text-sm font-medium text-sky-300 mb-1">Artifact (e.g., Name, Postcode, City, Landmark)</label>
-                    <input type="text" name="postcode" id="postcode" required
-                            class="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all"
-                            placeholder="e.g., London, Eiffel Tower, D04 E5W5">
-                </div>
-                <button type="submit"
-                        class="w-full bg-sky-600 hover:bg-sky-500 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:shadow-lg transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-opacity-50">
-                Unveil the Past
-                </button>
-            </form>
-
-            <div class="mt-8 p-6 bg-slate-700 rounded-xl shadow-lg">
-                <h2 class="text-2xl font-bold text-sky-400 mb-4 text-center">Capture a Moment</h2>
-                <div class="flex justify-center mb-4">
-                    <button id="openCameraButton" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
-                        Open Camera
-                    </button>
-                </div>
-
-                <div id="cameraFeedContainer" class="hidden flex-col items-center">
-                    <video id="cameraFeed" class="w-full max-w-md rounded-lg border border-slate-600 shadow-md" autoplay></video>
-                    <canvas id="cameraCanvas" class="hidden"></canvas>
-                    <button id="capturePhotoButton" class="mt-4 bg-green-600 hover:bg-green-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
-                        Capture Photo
-                    </button>
-                    <button id="closeCameraButton" class="mt-2 bg-red-600 hover:bg-red-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50">
-                        Close Camera
-                    </button>
-                    <p id="cameraStatus" class="mt-2 text-sm text-sky-300 text-center"></p>
-                </div>
-            </div>
-
-
-            <div id="loadingIndicator" class="mt-8 text-center hidden">
-                <div class="inline-flex items-center">
-                    <svg class="animate-spin -ml-1 mr-3 h-6 w-6 text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                    <span class="text-slate-300">Summoning history...</span>
-                </div>
-            </div>
-            
-            <p id="geocodingStatus" class="mt-4 text-sm text-sky-300 text-center hidden"></p>
-            <p id="imageGenStatus" class="mt-2 text-sm text-sky-300 text-center hidden"></p>
-
-
-            <div id="errorMessage" class="mt-6 bg-red-700/30 border border-red-600 text-red-300 px-4 py-3 rounded-lg hidden" role="alert">
-            </div>
-            
-            <div id="storyDisplayArea" class="bg-slate-700 shadow-lg rounded-xl p-6 flex flex-col space-y-4 overflow-y-auto max-h-[80vh]">
-                <article id="storyOutput" class="prose prose-invert max-w-none text-slate-200"></article>
-                <div id="imageContainer" class="text-center"></div>
-                <div class="text-center mt-4">
-                    <p id="ttsStatus" class="text-sm text-slate-400 mt-2 hidden"></p>
-                    <audio id="audioPlayer" controls class="mt-3 w-full rounded-md bg-slate-600"></audio>
-                </div>
-                <div id="exploreFurtherButtons" class="mt-6 pt-4 border-t border-slate-600">
-                    </div>
-            </div>
-        </div>
-    </div>
-
-    <footer class="text-center text-slate-500 mt-12 text-sm w-full">
-        <p>&copy; <span id="currentYear"></span> Echoes. Powered by Gemini, Google Maps & Google Cloud TTS.</p>
-    </footer>
-
-    <div id="explanationModal" class="modal-overlay hidden">
-        <div class="modal-content">
-            <button id="explanationCloseBtn" class="modal-close-btn">&times;</button>
-            <h3 class="text-xl font-bold text-sky-400 mb-2"><span id="explanationTerm"></span> <span id="explanationType" class="text-sm text-slate-400 font-normal"></span></h3>
-            <p id="explanationContent" class="text-slate-200"></p>
-        </div>
-    </div>
-
-    <script>
-        document.getElementById('currentYear').textContent = new Date().getFullYear();
     </script>
 
 </body>
