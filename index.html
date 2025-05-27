@@ -154,7 +154,10 @@
 
         <main id="right-content-area">
             <header class="text-center mb-8">
-                <h1 class="text-4xl font-bold text-sky-400">Echoes</h1>
+                <img src="https://drive.google.com/uc?id=1K00-pHxaalQKRTiVqdDt-jMt4bwmUPFI" 
+                     alt="Echoes App Logo" 
+                     class="h-16 mx-auto mb-4 rounded-lg"
+                     onerror="this.onerror=null; this.src='https://placehold.co/150x64/60A5FA/FFFFFF?text=Echoes&font=Inter';">
                 <p class="text-slate-400 mt-2">Uncover the whispers of the past. Enter a name, object, or place to hear its historical echoes and glimpse its story.</p>
             </header>
 
@@ -332,6 +335,10 @@
         let currentTextStory = "";
         let searchHistory = []; // Array to store search history (max 10 items)
         let currentStream; // To hold the camera stream
+
+        // New: Cache for storing generated stories
+        const storyCache = new Map(); // Key: search term, Value: { rawMarkdown, htmlStory, imageUrl, entities }
+
 
         // Function to escape HTML special characters
         function escapeHtml(unsafe) {
@@ -734,7 +741,54 @@
                 updateSearchHistoryPanel();
             }
 
-            // Input validation and API key checks
+            // --- Check cache first ---
+            if (storyCache.has(postcode)) {
+                const cachedData = storyCache.get(postcode);
+                storyOutput.innerHTML = cachedData.htmlStory;
+                imageContainer.innerHTML = `<img src="${cachedData.imageUrl}" alt="AI-generated image for the story" class="mx-auto my-4 rounded-lg shadow-md max-w-full h-auto object-contain" style="max-height: 400px;">`;
+                currentTextStory = cachedData.rawMarkdown;
+
+                // Re-render explore further buttons from cached entities
+                const exploreFurtherDiv = document.getElementById('exploreFurtherButtons');
+                exploreFurtherDiv.innerHTML = ''; // Clear existing buttons
+                const termsTitle = document.createElement('h3');
+                termsTitle.classList.add('text-lg', 'font-semibold', 'text-sky-300', 'mb-3');
+                termsTitle.textContent = 'Explore Further:';
+                exploreFurtherDiv.appendChild(termsTitle);
+
+                if (cachedData.entities && cachedData.entities.length > 0) {
+                    const termsFlexContainer = document.createElement('div');
+                    termsFlexContainer.classList.add('flex', 'flex-wrap', 'gap-2');
+                    cachedData.entities.forEach(term => {
+                        const termButton = document.createElement('button');
+                        termButton.classList.add('highlighted-term-button', 'bg-sky-700/20', 'text-sky-300', 'hover:bg-sky-600/40', 'px-3', 'py-1', 'rounded-full', 'text-sm', 'font-medium', 'transition-colors');
+                        termButton.textContent = term;
+                        termButton.setAttribute('data-term', term);
+                        termButton.addEventListener('click', () => {
+                            postcodeValue.value = term; // Set the input field
+                            postcodeForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })); // Trigger form submission
+                        });
+                        termsFlexContainer.appendChild(termButton);
+                    });
+                    exploreFurtherDiv.appendChild(termsFlexContainer);
+                } else {
+                    const noTerms = document.createElement('p');
+                    noTerms.classList.add('text-slate-400', 'text-sm');
+                    noTerms.textContent = 'No specific terms identified for further exploration.';
+                    exploreFurtherDiv.appendChild(noTerms);
+                }
+
+                await synthesizeAndPlayAudio(currentTextStory, audioPlayer, ttsStatus);
+                geocodingStatus.textContent = `Loaded from cache: ${postcode}`;
+                geocodingStatus.classList.remove('hidden');
+                imageGenStatus.classList.add('hidden'); // Hide image gen status when loading from cache
+                errorMessage.classList.add('hidden');
+                loadingIndicator.classList.add('hidden');
+                return; // Exit early if loaded from cache
+            }
+
+
+            // Input validation and API key checks (only if not loaded from cache)
             if (!postcode) { displayError("Please enter an artifact."); return; }
             if (!MAPS_API_KEY || MAPS_API_KEY === "" || MAPS_API_KEY === "YOUR_MAPS_API_KEY") { displayError("Google Maps API Key is not configured. Geocoding will be skipped."); /* Continue without geocoding if key is missing */ }
             if (!textModel && (GEMINI_API_KEY === "" || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY")) { displayError("Gemini API Key for text generation is not configured and SDK couldn't initialize."); return; }
@@ -891,6 +945,14 @@
                     noTerms.textContent = 'No specific terms identified for further exploration.';
                     exploreFurtherDiv.appendChild(noTerms);
                 }
+
+                // --- Store in cache after successful generation ---
+                storyCache.set(postcode, {
+                    rawMarkdown: currentTextStory,
+                    htmlStory: storyHtml,
+                    imageUrl: imageUrl,
+                    entities: entitiesToHighlight
+                });
 
                 // --- Step 6: Play TTS Audio for the new story ---
                 await synthesizeAndPlayAudio(currentTextStory, audioPlayer, ttsStatus); // Use direct audioPlayer and ttsStatus
