@@ -173,10 +173,14 @@
 
             <section class="mt-8 p-6 bg-slate-700 rounded-xl shadow-lg">
                 <h2 class="text-2xl font-bold text-sky-400 mb-4 text-center">Capture a Moment</h2>
-                <div class="flex justify-center mb-4">
+                <div class="flex justify-center mb-4 space-x-4">
                     <button id="openCameraButton" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
                         Open Camera
                     </button>
+                    <button id="uploadImageButton" class="bg-purple-600 hover:bg-purple-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50">
+                        Upload Image
+                    </button>
+                    <input type="file" id="imageUploadInput" accept="image/*" class="hidden">
                 </div>
 
                 <div id="cameraFeedContainer" class="hidden flex-col items-center">
@@ -318,6 +322,10 @@
         const capturePhotoButton = document.getElementById('capturePhotoButton');
         const closeCameraButton = document.getElementById('closeCameraButton');
         const cameraStatus = document.getElementById('cameraStatus');
+
+        // New DOM elements for image upload feature
+        const uploadImageButton = document.getElementById('uploadImageButton');
+        const imageUploadInput = document.getElementById('imageUploadInput');
 
 
         // Global variable to hold the current story text for TTS
@@ -624,13 +632,13 @@
         }
 
         /**
-         * Analyzes a base64 encoded image to identify a relevant term (object, human, or location) using Gemini Vision API.
-         * Prioritizes object, then human, then location.
+         * Analyzes a base64 encoded image to identify a relevant term (landmark, historic object, or historic human) using Gemini Vision API.
+         * Prioritizes landmark, then historic object, then historic human.
          * @param {string} base64ImageData The base64 encoded image data (e.g., "data:image/png;base64,...").
          * @returns {Promise<string|null>} A promise that resolves to the identified term string or null if not found.
          */
         async function analyzeImageForLocation(base64ImageData) {
-            cameraStatus.textContent = "Analyzing image for object, human, or location...";
+            cameraStatus.textContent = "Analyzing image for landmark, historic object, or historic human...";
             loadingIndicator.classList.remove('hidden');
 
             if (!GEMINI_API_KEY || GEMINI_API_KEY === "" || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY") {
@@ -648,10 +656,14 @@
                 return null;
             }
 
-            // Modified prompt to prioritize object, then human, then location
-            const prompt = `Analyze this image and identify the most prominent *historic object*, *historic human*, or *geographic location* it represents. 
-                Prioritize identifying a specific historical object first. If no clear object, then identify a prominent human (e.g., 'Queen Elizabeth II'). 
-                If neither, then infer the most likely city, region, or country (e.g., 'Paris, France'). Provide only the identified term and nothing else.`;
+            // REVISED PROMPT to prioritize landmark, then historic object, then historic human
+            const prompt = `
+                If the picture is clearly a landmark, Monument, Pillar, or scene, figure out where that is, return back the name of the landmark, Monument, Pillar, or scene.
+                If the picture is clearly an object in history, like a statue, Sculpture, ancient picture, etc., figure out what is or who is that object, return the name.
+                If the picture is clearly a modern object, like a Coca-Cola bottle, a product, etc., figure out what is that product's company and related to the area of the origin.
+                Do not make up story.
+                Provide only the identified term and nothing else.
+            `;
 
             try {
                 const payload = {
@@ -698,7 +710,7 @@
                     cameraStatus.textContent = `Identified: ${identifiedTerm}`;
                     return identifiedTerm;
                 } else {
-                    cameraStatus.textContent = "No clear object, human, or location identified from image. Please try again or enter manually.";
+                    cameraStatus.textContent = "No clear landmark, historic object, or historic human identified from image. Please try again or enter manually.";
                     return null;
                 }
             } catch (error) {
@@ -710,10 +722,10 @@
         }
 
 
-        // Event listener for form submission (existing logic, now potentially called by camera)
+        // Event listener for form submission (existing logic, now potentially called by camera or image upload)
         postcodeForm.addEventListener('submit', async (event) => {
             event.preventDefault();
-            const postcode = postcodeValue.value.trim(); // This will be the location from text input OR from camera
+            const postcode = postcodeValue.value.trim(); // This will be the location from text input OR from camera/image upload
 
             // Add current search term to history (if not empty and not already the first item)
             if (postcode && (searchHistory.length === 0 || searchHistory[0] !== postcode)) {
@@ -737,7 +749,7 @@
 
             try {
                 // --- Step 1: Geocode Postcode (if API key is available) ---
-                if (MAPS_API_KEY && MAPS_API_KEY !== "" && MAPS_API_KEY !== "YOUR_MAPS_API_KEY") {
+                if (MAPS_API_KEY && MAPS_API_KEY !== "" || MAPS_API_KEY === "YOUR_MAPS_API_KEY") {
                     geocodingStatus.textContent = `Attempting to pinpoint for: ${postcode}...`;
                     geocodingStatus.classList.remove('hidden');
                     const geocodingUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(postcode)}&key=${MAPS_API_KEY}`;
@@ -773,16 +785,24 @@
                 
                 const storyPrompt = `
                 You are a historian and storyteller.
-                A user has provided an artifact, identified as: "${determinedLocation}" (derived from the original input "${postcode}").
+                A user has provided an artifact, identified as: "${determinedLocation}" 
+                (derived from the original input "${postcode}").
 
                 Your tasks are:
-                1.  Based on this determined artifact ("${determinedLocation}"), find relevant historical information, notable events, figures, or developments.
+                1.  Based on this determined artifact ("${determinedLocation}"), 
+                    find relevant historical information, notable events, figures, or developments.
                 2.  Write an interesting and concise historical story about this artifact.
                 3.  The story must be in Markdown format and include a suitable title.
                 4.  Do not include any "Image Suggestion:" line at the end of your response.
-                5.  Keep the context as a story on the book, good reading, without explicitly using "What?", "Where?", "When?", "Who?", "Why?", and "How?" as section headers or direct questions within the narrative. Instead, weave the answers to these questions naturally into the story's flow.
+                5.  Keep the context as a story on the book, good reading, 
+                    without explicitly using "What?", "Where?", "When?", "Who?", "Why?", and "How?" 
+                    as section headers or direct questions within the narrative. 
+                    Instead, weave the answers to these questions naturally into the story's flow.
                 6.  Format the text as the book content, beware to remove all \` (backward) symbols on the context and word 'markdown' next to it
-                If you cannot find specific historical information for "${determinedLocation}", try to find information for the broader context (e.g., town/city or region it belongs to), clearly stating this in the story. If no relevant historical information can be reasonably found, respond with a polite message in Markdown.
+                7.  If you cannot find specific historical information for "${determinedLocation}", 
+                try to find information for the broader context (e.g., town/city or region it belongs to), 
+                clearly stating this in the story. 
+                8.  If no relevant historical information can be reasonably found, respond with a polite message in Markdown.
                                 `;
 
                 const storyResult = await textModel.generateContent(storyPrompt);
@@ -990,6 +1010,7 @@
                 cameraFeedContainer.classList.remove('hidden');
                 cameraFeedContainer.classList.add('flex'); // Show as flex
                 openCameraButton.classList.add('hidden');
+                uploadImageButton.classList.add('hidden'); // Hide upload button when camera is open
                 cameraStatus.textContent = "Camera active. Capture your moment!";
             } catch (err) {
                 console.warn("Failed to access environment camera, trying user camera:", err);
@@ -1000,6 +1021,7 @@
                     cameraFeedContainer.classList.remove('hidden');
                     cameraFeedContainer.classList.add('flex'); // Show as flex
                     openCameraButton.classList.add('hidden');
+                    uploadImageButton.classList.add('hidden'); // Hide upload button when camera is open
                     cameraStatus.textContent = "Camera active (front camera). Capture your moment!";
                 } catch (fallbackErr) {
                     console.error("Error accessing any camera:", fallbackErr);
@@ -1035,6 +1057,8 @@
             cameraFeedContainer.classList.add('hidden');
             cameraFeedContainer.classList.remove('flex');
             openCameraButton.classList.remove('hidden');
+            uploadImageButton.classList.remove('hidden'); // Show upload button again
+            cameraStatus.textContent = "";
 
             // Analyze the captured image for location
             const identifiedLocation = await analyzeImageForLocation(imageDataUrl);
@@ -1043,7 +1067,7 @@
                 postcodeValue.value = identifiedLocation; // Set the input field with identified location
                 postcodeForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })); // Trigger story generation
             } else {
-                cameraStatus.textContent = "No clear object, human, or location identified from image. Please try again or enter manually.";
+                cameraStatus.textContent = "No clear landmark, historic object, or historic human identified from image. Please try again or enter manually.";
             }
         });
 
@@ -1056,7 +1080,64 @@
             cameraFeedContainer.classList.add('hidden');
             cameraFeedContainer.classList.remove('flex');
             openCameraButton.classList.remove('hidden');
+            uploadImageButton.classList.remove('hidden'); // Show upload button again
             cameraStatus.textContent = "";
+        });
+
+        // --- Image Upload Feature Event Listeners ---
+        uploadImageButton.addEventListener('click', () => {
+            errorMessage.classList.add('hidden');
+            cameraStatus.textContent = ""; // Clear camera status
+            imageUploadInput.click(); // Trigger the hidden file input click
+        });
+
+        imageUploadInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) {
+                displayError("No file selected.");
+                return;
+            }
+
+            if (!file.type.startsWith('image/')) {
+                displayError("Please upload an image file.");
+                return;
+            }
+
+            cameraStatus.textContent = "Reading image file...";
+            cameraStatus.classList.remove('hidden');
+            loadingIndicator.classList.remove('hidden');
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const imageDataUrl = e.target.result; // Base64 encoded image
+                
+                // Hide camera controls if they were visible
+                if (currentStream) {
+                    currentStream.getTracks().forEach(track => track.stop());
+                    cameraFeed.srcObject = null;
+                    currentStream = null;
+                }
+                cameraFeedContainer.classList.add('hidden');
+                cameraFeedContainer.classList.remove('flex');
+                openCameraButton.classList.remove('hidden');
+                uploadImageButton.classList.remove('hidden'); // Ensure it's visible again
+
+                const identifiedTerm = await analyzeImageForLocation(imageDataUrl);
+                if (identifiedTerm) {
+                    postcodeValue.value = identifiedTerm;
+                    postcodeForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                } else {
+                    cameraStatus.textContent = "Could not identify a clear term from the uploaded image. Please try again or enter manually.";
+                }
+                loadingIndicator.classList.add('hidden');
+            };
+            reader.onerror = (e) => {
+                console.error("FileReader error:", e);
+                displayError("Failed to read image file.");
+                loadingIndicator.classList.add('hidden');
+                cameraStatus.textContent = "";
+            };
+            reader.readAsDataURL(file); // Read the file as a Base64 Data URL
         });
 
 
